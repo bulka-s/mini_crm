@@ -10,6 +10,7 @@ function App() {
   const [computers, setComputers] = useState<Computer[]>([])
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [showForm, setShowForm] = useState(false)
 
   async function handleSearch() {
     try {
@@ -21,23 +22,21 @@ function App() {
     
   }
 
-  useEffect(() => {
-    async function loadComputers() {
-      try {
-        const data = await getComputers()
-        setComputers(data)
-      } catch (error) {
-        setError(`Не удалось загрузить компьютеры ${error}`)
-      }
+  async function loadComputers() {
+    try {
+      const data = await getComputers()
+      setComputers(data)
+    } catch (error) {
+      setError(`Не удалось загрузить компьютеры ${error}`)
     }
+  }
 
+  useEffect(() => {
     loadComputers()
   }, [])
 
   return (
     <main className="min-h-screen bg-gray-100 p-8">
-
-      <ComputerForm/>
 
       <h1 className="text-3xl font-bold text-gray-900">
         MCHS CRM
@@ -53,6 +52,12 @@ function App() {
           className='bg-gray-500 text-white rounded-xl p-2 px-4 m-3'
           onClick={handleSearch}
         >Найти</button>
+        <button
+          className='rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700'
+          onClick={() => setShowForm(true)}
+        >
+          Добавить компьютер
+        </button>
       </div>
       {error && (
         <p className="text-red-500">{error}</p>
@@ -65,6 +70,13 @@ function App() {
       <div className='mt-6'>
         <ComputersTable computers={computers}/>
       </div>
+
+      {showForm && (
+        <ComputerForm
+          onClose={() => setShowForm(false)}
+          onCreated={loadComputers}
+        />
+      )}
     </main>
   )
 }

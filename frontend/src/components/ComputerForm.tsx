@@ -2,7 +2,12 @@ import { useState } from "react"
 import type { ComputerFormData } from "../types/computer"
 import { createComputer } from "../api/computers"
 
-function ComputerForm() {
+interface ComputerFormProps {
+  onClose: () => void,
+  onCreated: () => void
+}
+
+function ComputerForm({onClose, onCreated} : ComputerFormProps) {
   const [formData, setFormData] = useState<ComputerFormData>({
     ip_address: "",
     hostname: "",
@@ -36,7 +41,8 @@ function ComputerForm() {
     try {
         await createComputer(formData)
 
-        console.log("Компьютер создан")
+        onCreated()
+        onClose()
     } catch (error) {
         console.error(error)
     }
@@ -56,6 +62,7 @@ function ComputerForm() {
           <button
             type="button"
             className="text-2xl text-gray-500 hover:text-gray-900"
+            onClick={onClose}
           >
             ×
           </button>
