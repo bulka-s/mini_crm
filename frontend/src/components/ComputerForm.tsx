@@ -1,6 +1,6 @@
 import { useState } from "react"
 import type { ComputerFormData } from "../types/computer"
-import {createComputer} from "../api/computers"
+import { createComputer } from "../api/computers"
 
 function ComputerForm() {
   const [formData, setFormData] = useState<ComputerFormData>({

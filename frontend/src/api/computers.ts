@@ -28,4 +28,4 @@ async function createComputer(data:ComputerFormData): Promise<void> {
     }
 }
 
-export default {getComputers, createComputer}
+export {getComputers, createComputer}
