@@ -16,6 +16,12 @@ dist
 dist-ssr
 *.local
 
+# Built frontend assets embedded into the Go binary
+static/assets/
+static/*.js
+static/*.css
+static/*.map
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
