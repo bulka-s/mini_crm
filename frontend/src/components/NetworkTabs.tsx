@@ -11,7 +11,7 @@ interface NetworkTabsProps {
 const tabs: { key: NetworkFilter; label: string; hint: string }[] = [
   { key: 'all', label: 'Все сети', hint: '' },
   { key: 'local', label: 'Локальная', hint: '10.110.X.X' },
-  { key: 'external', label: 'Внешняя', hint: '192.168.X.X' },
+  { key: 'external', label: 'Интернет', hint: '192.168.X.X' },
   { key: 'other', label: 'Другие', hint: '' },
 ]
 

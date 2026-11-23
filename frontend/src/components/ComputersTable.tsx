@@ -1,13 +1,11 @@
 import type { Computer, SortKey } from '../types/computer'
 import { displayValue } from '../lib/format'
-import StatusBadge from './StatusBadge'
 
 interface ComputersTableProps {
   computers: Computer[]
   selectedId?: number | null
   sortKey: SortKey
   sortDir: 'asc' | 'desc'
-  showFullName?: boolean
   onSort: (key: SortKey) => void
   onSelect: (computer: Computer) => void
   onEdit: (computer: Computer) => void
@@ -19,7 +17,6 @@ function ComputersTable({
   selectedId,
   sortKey,
   sortDir,
-  showFullName = false,
   onSort,
   onSelect,
   onEdit,
@@ -27,23 +24,22 @@ function ComputersTable({
 }: ComputersTableProps) {
   const columns: { key: SortKey; label: string }[] = [
     { key: 'ip_address', label: 'IP' },
-    { key: 'hostname', label: 'Компьютер' },
-    ...(showFullName ? [{ key: 'full_name' as const, label: 'ФИО' }] : []),
+    { key: 'hostname', label: 'Устройство' },
+    { key: 'mac_address', label: 'MAC-адрес' },
     { key: 'phone', label: 'Телефон' },
-    { key: 'cabinet', label: 'Кабинет' },
     { key: 'department_name', label: 'Отдел' },
-    { key: 'pc_status', label: 'Статус' },
+    { key: 'operating_system', label: 'ОС' },
   ]
 
   return (
     <div className="overflow-x-auto">
-      <table className={`w-full border-collapse text-sm ${showFullName ? 'min-w-[920px]' : 'min-w-[780px]'}`}>
+      <table className="w-full min-w-[940px] border-collapse text-sm">
         <thead>
           <tr className="bg-slate-50 text-left text-slate-600">
             {columns.map((column) => {
               const active = sortKey === column.key
               return (
-                <th key={column.key} className="px-4 py-2.5">
+                <th key={column.key} className="px-4 py-3">
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 text-xs font-medium hover:text-slate-900"
@@ -57,7 +53,7 @@ function ComputersTable({
                 </th>
               )
             })}
-            <th className="px-4 py-2.5 text-xs font-medium">Действия</th>
+            <th className="px-4 py-3 text-xs font-semibold">Действия</th>
           </tr>
         </thead>
         <tbody>
@@ -66,24 +62,19 @@ function ComputersTable({
             return (
               <tr
                 key={computer.id}
-                className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50 ${
-                  selected ? 'bg-slate-50' : 'bg-white'
+                className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-cyan-50/40 ${
+                  selected ? 'bg-cyan-50/60' : 'bg-white'
                 }`}
                 onClick={() => onSelect(computer)}
               >
                 <td className="px-4 py-2.5 font-mono text-[13px] text-slate-800">
                   {displayValue(computer.ip_address)}
                 </td>
-                <td className="px-4 py-2.5 font-medium text-slate-900">{displayValue(computer.hostname)}</td>
-                {showFullName && (
-                  <td className="px-4 py-2.5 text-slate-800">{displayValue(computer.full_name)}</td>
-                )}
+                <td className="px-4 py-2.5 font-medium text-slate-900">{computer.device_type === 'printer' ? 'Принтер' : computer.device_type === 'gateway' ? 'Шлюз' : computer.device_type === 'computer' ? displayValue(computer.hostname) : `Другое · ${displayValue(computer.hostname)}`}</td>
+                <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{displayValue(computer.mac_address)}</td>
                 <td className="px-4 py-2.5 text-slate-700">{displayValue(computer.phone)}</td>
-                <td className="px-4 py-2.5 text-slate-700">{displayValue(computer.cabinet)}</td>
                 <td className="px-4 py-2.5 text-slate-700">{displayValue(computer.department_name)}</td>
-                <td className="px-4 py-2.5">
-                  <StatusBadge status={computer.pc_status} />
-                </td>
+                <td className="px-4 py-2.5 text-slate-700">{displayValue(computer.operating_system)}</td>
                 <td className="px-4 py-2.5">
                   <div className="flex gap-2">
                     <button

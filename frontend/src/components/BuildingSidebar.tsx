@@ -43,7 +43,7 @@ function SidebarButton({
         </div>
       </button>
       {actions && (
-        <div className="absolute right-2 top-2 hidden gap-1 group-hover:flex">
+        <div className="absolute right-2 top-2 flex gap-1 opacity-50 transition-opacity group-hover:opacity-100">
           {actions}
         </div>
       )}
@@ -53,7 +53,7 @@ function SidebarButton({
 
 function BuildingSidebar({ overview, selected, onSelect, onAdd, onEdit, onDelete }: BuildingSidebarProps) {
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
+    <aside className="building-sidebar flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
       <div className="border-b border-slate-200 px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-800">Здания</h2>
       </div>

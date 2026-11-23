@@ -76,9 +76,8 @@ func sampleComputer() map[string]any {
 	return map[string]any{
 		"ip_address":      "10.110.1.24",
 		"hostname":        "PC-CAB-12",
-		"full_name":       "Иванов Пётр Сергеевич",
+		"mac_address":     "AA-BB-CC-DD-EE-FF",
 		"phone":           "11-24",
-		"cabinet":         "214",
 		"department_name": "Связь",
 		"pc_status":       "В работе",
 		"note":            "Основное АРМ",
@@ -96,8 +95,8 @@ func TestCreateAndListComputers(t *testing.T) {
 	if created.ID == 0 {
 		t.Fatal("expected created id")
 	}
-	if created.FullName != "Иванов Пётр Сергеевич" {
-		t.Fatalf("full name = %q", created.FullName)
+	if created.MACAddress != "aa:bb:cc:dd:ee:ff" {
+		t.Fatalf("MAC address = %q", created.MACAddress)
 	}
 	if created.Network != networkLocal {
 		t.Fatalf("network = %q", created.Network)
@@ -117,7 +116,7 @@ func TestSearchIsCaseInsensitiveForRussian(t *testing.T) {
 	server := setupTestServer(t)
 	postJSON(t, server.URL+"/computers", sampleComputer()).Body.Close()
 
-	listResp, err := http.Get(server.URL + "/computers?search=" + "иванов")
+	listResp, err := http.Get(server.URL + "/computers?search=" + "связь")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,17 +126,15 @@ func TestSearchIsCaseInsensitiveForRussian(t *testing.T) {
 	}
 }
 
-func TestLegacyNameFieldsAreMerged(t *testing.T) {
+func TestMACAddressIsNormalized(t *testing.T) {
 	server := setupTestServer(t)
 	resp := postJSON(t, server.URL+"/computers", map[string]any{
 		"ip_address":  "192.168.1.10",
-		"last_name":   "Петрова",
-		"first_name":  "Анна",
-		"middle_name": "Ивановна",
+		"mac_address": "00-11-22-33-44-55",
 	})
 	created := decodeBody[Computer](t, resp)
-	if created.FullName != "Петрова Анна Ивановна" {
-		t.Fatalf("merged name = %q", created.FullName)
+	if created.MACAddress != "00:11:22:33:44:55" {
+		t.Fatalf("normalized MAC = %q", created.MACAddress)
 	}
 	if created.Network != networkExternal {
 		t.Fatalf("network = %q", created.Network)
@@ -146,10 +143,10 @@ func TestLegacyNameFieldsAreMerged(t *testing.T) {
 
 func TestNetworkFilterAndIPSort(t *testing.T) {
 	server := setupTestServer(t)
-	postJSON(t, server.URL+"/computers", map[string]any{"full_name": "А", "ip_address": "10.110.2.5"}).Body.Close()
-	postJSON(t, server.URL+"/computers", map[string]any{"full_name": "Б", "ip_address": "10.110.1.20"}).Body.Close()
-	postJSON(t, server.URL+"/computers", map[string]any{"full_name": "В", "ip_address": "192.168.10.2"}).Body.Close()
-	postJSON(t, server.URL+"/computers", map[string]any{"full_name": "Г", "ip_address": "8.8.8.8"}).Body.Close()
+	postJSON(t, server.URL+"/computers", map[string]any{"ip_address": "10.110.2.5"}).Body.Close()
+	postJSON(t, server.URL+"/computers", map[string]any{"ip_address": "10.110.1.20"}).Body.Close()
+	postJSON(t, server.URL+"/computers", map[string]any{"ip_address": "192.168.10.2"}).Body.Close()
+	postJSON(t, server.URL+"/computers", map[string]any{"ip_address": "8.8.8.8"}).Body.Close()
 
 	localResp, err := http.Get(server.URL + "/computers?network=local")
 	if err != nil {
@@ -246,10 +243,10 @@ func TestGetUpdateDeleteComputer(t *testing.T) {
 	}
 
 	updatedPayload := sampleComputer()
-	updatedPayload["cabinet"] = "301"
+	updatedPayload["mac_address"] = "12:34:56:78:9a:bc"
 	updatedPayload["pc_status"] = "Ремонт"
 	updated := decodeBody[Computer](t, putJSON(t, fmt.Sprintf("%s/computers/%d", server.URL, created.ID), updatedPayload))
-	if updated.Cabinet != "301" || updated.PCStatus != "Ремонт" {
+	if updated.MACAddress != "12:34:56:78:9a:bc" || updated.PCStatus != "Ремонт" {
 		t.Fatalf("update failed: %+v", updated)
 	}
 
@@ -275,7 +272,7 @@ func TestValidation(t *testing.T) {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 	payload := decodeBody[map[string]string](t, resp)
-	if payload["error"] != "укажите IP-адрес, имя компьютера или ФИО" {
+	if payload["error"] != "укажите IP-адрес или имя устройства" {
 		t.Fatalf("error = %q", payload["error"])
 	}
 
@@ -284,30 +281,8 @@ func TestValidation(t *testing.T) {
 		t.Fatalf("expected 201 for hostname-only, got %d", createdResp.StatusCode)
 	}
 	created := decodeBody[Computer](t, createdResp)
-	if created.Hostname != "PC-01" || created.FullName != "" {
+	if created.Hostname != "PC-01" {
 		t.Fatalf("created = %+v", created)
-	}
-}
-
-func TestBuildingShowFullName(t *testing.T) {
-	server := setupTestServer(t)
-
-	created := decodeBody[Building](t, postJSON(t, server.URL+"/buildings", map[string]any{
-		"name":           "Штаб",
-		"address":        "ул. Мира, 1",
-		"show_full_name": true,
-	}))
-	if !created.ShowFullName {
-		t.Fatalf("expected show_full_name true, got %+v", created)
-	}
-
-	updated := decodeBody[Building](t, putJSON(t, server.URL+"/buildings/"+itoa(created.ID), map[string]any{
-		"name":           created.Name,
-		"address":        created.Address,
-		"show_full_name": false,
-	}))
-	if updated.ShowFullName {
-		t.Fatalf("expected show_full_name false after update")
 	}
 }
 
@@ -403,8 +378,8 @@ func TestExportImportCSV(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(exported, []byte("Иванов Пётр Сергеевич")) {
-		t.Fatalf("export missing name: %s", exported)
+	if bytes.Contains(exported, []byte("Иванов Пётр Сергеевич")) {
+		t.Fatalf("export must not contain personal names: %s", exported)
 	}
 
 	var body bytes.Buffer
@@ -413,7 +388,7 @@ func TestExportImportCSV(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	csvData := "ФИО;IP-адрес;Имя компьютера;Статус;Здание;Адрес здания\nПетрова Анна;192.168.1.30;PC-30;На складе;Склад;ул. Мира, 8\n"
+	csvData := "MAC-адрес;IP-адрес;Имя компьютера;Статус;Здание;Адрес здания\n00:11:22:33:44:55;192.168.1.30;PC-30;На складе;Склад;ул. Мира, 8\n"
 	if _, err := io.WriteString(part, csvData); err != nil {
 		t.Fatal(err)
 	}

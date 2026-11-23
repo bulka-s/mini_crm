@@ -6,10 +6,8 @@ export function displayValue(value: string | undefined | null): string {
 }
 
 export function computerLabel(computer: Computer): string {
-  const name = computer.full_name.trim()
   const host = computer.hostname.trim()
-  if (host && name) return `${host} · ${name}`
-  return host || name || `Компьютер #${computer.id}`
+  return host || `Устройство #${computer.id}`
 }
 
 export function compareIP(left: string, right: string): number {

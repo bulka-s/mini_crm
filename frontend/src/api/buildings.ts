@@ -1,7 +1,7 @@
-import type { Building, BuildingsOverview } from '../types/computer'
+import type { Building, BuildingNetwork, BuildingsOverview } from '../types/computer'
 import { parseJSON, readErrorMessage } from './http'
 
-type BuildingPayload = Pick<Building, 'name' | 'address' | 'show_full_name'>
+type BuildingPayload = Pick<Building, 'name' | 'address'> & { networks: BuildingNetwork[] }
 
 async function getBuildings(): Promise<BuildingsOverview> {
   const response = await fetch('/buildings')
@@ -33,4 +33,9 @@ async function deleteBuilding(id: number): Promise<void> {
   }
 }
 
-export { getBuildings, createBuilding, updateBuilding, deleteBuilding }
+async function getAvailableIPs(networkId: number): Promise<{ items: string[]; truncated: boolean }> {
+  const response = await fetch(`/building-networks/${networkId}/available-ips`)
+  return parseJSON(response, 'Ошибка загрузки свободных адресов')
+}
+
+export { getBuildings, createBuilding, updateBuilding, deleteBuilding, getAvailableIPs }

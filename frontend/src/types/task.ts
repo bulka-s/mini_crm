@@ -10,7 +10,6 @@ export interface Task {
   computer_id: number | null
   computer_hostname: string
   computer_ip: string
-  computer_full_name: string
   status: TaskStatus
   status_label: string
   due_date: string

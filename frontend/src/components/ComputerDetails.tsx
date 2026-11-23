@@ -1,11 +1,9 @@
 import type { ReactNode } from 'react'
 import type { Computer } from '../types/computer'
 import { computerLabel, displayValue } from '../lib/format'
-import StatusBadge from './StatusBadge'
 
 interface ComputerDetailsProps {
   computer: Computer
-  showFullName?: boolean
   onClose: () => void
   onEdit: () => void
   onDelete: () => void
@@ -20,7 +18,7 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
   )
 }
 
-function ComputerDetails({ computer, showFullName = false, onClose, onEdit, onDelete }: ComputerDetailsProps) {
+function ComputerDetails({ computer, onClose, onEdit, onDelete }: ComputerDetailsProps) {
   return (
     <div className="overlay-enter fixed inset-0 z-40 bg-slate-900/30" onClick={onClose}>
       <aside
@@ -43,14 +41,12 @@ function ComputerDetails({ computer, showFullName = false, onClose, onEdit, onDe
             <span className="font-mono">{displayValue(computer.ip_address)}</span>
           </DetailRow>
           <DetailRow label="Сеть">{displayValue(computer.network_label)}</DetailRow>
-          <DetailRow label="Компьютер">{displayValue(computer.hostname)}</DetailRow>
-          {showFullName && <DetailRow label="ФИО">{displayValue(computer.full_name)}</DetailRow>}
+          <DetailRow label="Тип устройства">{computer.device_type === 'printer' ? 'Принтер' : computer.device_type === 'gateway' ? 'Шлюз' : computer.device_type === 'computer' ? 'Компьютер' : 'Другое'}</DetailRow>
+          <DetailRow label="Имя устройства">{displayValue(computer.hostname)}</DetailRow>
+          {computer.device_type === 'computer' && <DetailRow label="ОС">{displayValue(computer.operating_system)}</DetailRow>}
+          <DetailRow label="MAC-адрес"><span className="font-mono">{displayValue(computer.mac_address)}</span></DetailRow>
           <DetailRow label="Телефон">{displayValue(computer.phone)}</DetailRow>
-          <DetailRow label="Кабинет">{displayValue(computer.cabinet)}</DetailRow>
           <DetailRow label="Отдел">{displayValue(computer.department_name)}</DetailRow>
-          <DetailRow label="Статус">
-            <StatusBadge status={computer.pc_status} />
-          </DetailRow>
           <DetailRow label="Примечание">
             <span className="whitespace-pre-wrap font-normal">{displayValue(computer.note)}</span>
           </DetailRow>

@@ -59,6 +59,13 @@ func ensureSchema(db *sql.DB) error {
 			name TEXT NOT NULL,
 			address TEXT
 		)`,
+		`CREATE TABLE IF NOT EXISTS building_networks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			building_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			cidr TEXT NOT NULL,
+			FOREIGN KEY(building_id) REFERENCES buildings(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS tasks (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			title TEXT NOT NULL,
@@ -83,20 +90,21 @@ func ensureSchema(db *sql.DB) error {
 	if err := addColumnIfMissing(db, "computers", "building_id", "INTEGER"); err != nil {
 		return err
 	}
-	if err := addColumnIfMissing(db, "buildings", "show_full_name", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+	if err := addColumnIfMissing(db, "computers", "device_type", "TEXT NOT NULL DEFAULT 'computer'"); err != nil {
 		return err
 	}
-
+	if err := addColumnIfMissing(db, "computers", "operating_system", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "computers", "mac_address", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	_, err := db.Exec(`
 		UPDATE computers
-		SET full_name = TRIM(
-			TRIM(COALESCE(last_name, '') || ' ' || COALESCE(first_name, ''))
-			|| ' ' || COALESCE(middle_name, '')
-		)
-		WHERE full_name IS NULL OR TRIM(full_name) = ''
+		SET full_name = '', last_name = '', first_name = '', middle_name = '', cabinet = ''
 	`)
 	if err != nil {
-		return fmt.Errorf("backfill full_name: %w", err)
+		return fmt.Errorf("remove retired personal and cabinet fields: %w", err)
 	}
 
 	return nil

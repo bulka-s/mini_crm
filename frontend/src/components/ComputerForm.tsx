@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { createComputer, updateComputer } from '../api/computers'
+import { getAvailableIPs } from '../api/buildings'
 import type { Building, Computer, ComputerFormData } from '../types/computer'
-import { PC_STATUSES, emptyComputerForm, toFormData } from '../types/computer'
+import { emptyComputerForm, toFormData } from '../types/computer'
 
 interface ComputerFormProps {
   computer?: Computer | null
   buildings: Building[]
   defaultBuildingId?: number | null
+  defaultIPAddress?: string
   onClose: () => void
   onSaved: (computer: Computer) => void
 }
@@ -34,13 +36,21 @@ function Field({
   )
 }
 
-function ComputerForm({ computer, buildings, defaultBuildingId = null, onClose, onSaved }: ComputerFormProps) {
+function ComputerForm({ computer, buildings, defaultBuildingId = null, defaultIPAddress = '', onClose, onSaved }: ComputerFormProps) {
   const isEdit = Boolean(computer)
   const [formData, setFormData] = useState<ComputerFormData>(() =>
-    computer ? toFormData(computer) : { ...emptyComputerForm, building_id: defaultBuildingId },
+    computer ? toFormData(computer) : { ...emptyComputerForm, building_id: defaultBuildingId, ip_address: defaultIPAddress },
   )
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [networkId, setNetworkId] = useState<number | ''>(() => {
+    const buildingId = computer?.building_id ?? defaultBuildingId
+    return buildings.find((item) => item.id === buildingId)?.networks?.find((network) => network.cidr)?.id ?? ''
+  })
+  const [availableIPs, setAvailableIPs] = useState<string[]>([])
+  const [ipsTruncated, setIPsTruncated] = useState(false)
+  const [showAvailableIPs, setShowAvailableIPs] = useState(false)
+  const [manualIP, setManualIP] = useState(!networkId)
 
   useEffect(() => {
     const previous = document.body.style.overflow
@@ -75,14 +85,15 @@ function ComputerForm({ computer, buildings, defaultBuildingId = null, onClose, 
     }
   }
 
-  const statusOptions = PC_STATUSES.includes(formData.pc_status as (typeof PC_STATUSES)[number])
-    ? [...PC_STATUSES]
-    : formData.pc_status
-      ? [formData.pc_status, ...PC_STATUSES]
-      : [...PC_STATUSES]
-
   const selectedBuilding = buildings.find((item) => item.id === formData.building_id)
-  const showFullName = Boolean(selectedBuilding?.show_full_name)
+  const configuredNetworks = selectedBuilding?.networks?.filter((network) => network.cidr) ?? []
+
+  useEffect(() => {
+    if (!networkId) return
+    let active = true
+    void getAvailableIPs(networkId).then((result) => { if (active) { setAvailableIPs(result.items); setIPsTruncated(result.truncated) } }).catch(() => { if (active) { setAvailableIPs([]); setIPsTruncated(false) } })
+    return () => { active = false }
+  }, [networkId])
 
   return (
     <div className="overlay-enter fixed inset-0 z-50 bg-slate-900/30" onClick={onClose}>
@@ -113,7 +124,13 @@ function ComputerForm({ computer, buildings, defaultBuildingId = null, onClose, 
                     className="field"
                     value={formData.building_id ?? ''}
                     onChange={(event) =>
-                      updateField('building_id', event.target.value ? Number(event.target.value) : null)
+                      (() => {
+                        const buildingId = event.target.value ? Number(event.target.value) : null
+                        updateField('building_id', buildingId)
+                        const nextNetworkId = buildings.find((item) => item.id === buildingId)?.networks?.find((network) => network.cidr)?.id ?? ''
+                        setNetworkId(nextNetworkId)
+                        setManualIP(!nextNetworkId)
+                      })()
                     }
                   >
                     <option value="">Без здания</option>
@@ -125,15 +142,62 @@ function ComputerForm({ computer, buildings, defaultBuildingId = null, onClose, 
                   </select>
                 </Field>
               </div>
-              <Field id="ip_address" label="IP-адрес">
-                <input
-                  id="ip_address"
-                  className="field"
-                  value={formData.ip_address}
-                  placeholder="10.110.1.10"
-                  onChange={(event) => updateField('ip_address', event.target.value)}
-                />
-              </Field>
+              {configuredNetworks.length > 0 && (
+                <div className="sm:col-span-2">
+                  <Field id="network_id" label="Сеть">
+                    <select id="network_id" className="field" value={networkId} onChange={(event) => { setNetworkId(Number(event.target.value)); setManualIP(false) }}>
+                      {configuredNetworks.map((network) => <option key={network.id} value={network.id}>{network.name} · {network.cidr}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              )}
+              <div className="sm:col-span-2">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="min-w-0 flex-1">
+                    {configuredNetworks.length > 0 && !manualIP ? (
+                      <Field id="ip_address" label="IP-адрес">
+                        <select
+                          id="ip_address"
+                          className="field font-mono"
+                          value={formData.ip_address}
+                          onChange={(event) => {
+                            if (event.target.value === '__manual__') { setManualIP(true); return }
+                            updateField('ip_address', event.target.value)
+                          }}
+                        >
+                          <option value="">Выберите свободный адрес</option>
+                          {formData.ip_address && !availableIPs.includes(formData.ip_address) && (
+                            <option value={formData.ip_address}>{formData.ip_address} · текущий адрес</option>
+                          )}
+                          {availableIPs.map((ip) => <option key={ip} value={ip}>{ip}</option>)}
+                          <option value="__manual__">Ввести IP вручную…</option>
+                        </select>
+                      </Field>
+                    ) : (
+                      <Field id="ip_address" label="IP-адрес">
+                        <input id="ip_address" className="field font-mono" value={formData.ip_address} placeholder="Например, 10.110.1.10" onChange={(event) => updateField('ip_address', event.target.value)} />
+                      </Field>
+                    )}
+                  </div>
+                  {configuredNetworks.length > 0 && (
+                    <button type="button" className="btn btn-ghost" onClick={() => setShowAvailableIPs((shown) => !shown)}>
+                      {showAvailableIPs ? 'Скрыть адреса' : 'Показать свободные адреса'}
+                    </button>
+                  )}
+                  {manualIP && configuredNetworks.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => setManualIP(false)}>Выбрать из списка</button>}
+                </div>
+                {showAvailableIPs && (
+                  <div className="mt-2 max-h-52 overflow-y-auto border border-slate-200 bg-slate-50 p-2">
+                    {availableIPs.length === 0 ? <p className="p-2 text-sm text-slate-500">Свободных адресов нет или список ещё загружается.</p> : (
+                      <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                        {availableIPs.map((ip) => <button key={ip} type="button" className="rounded px-2 py-1 text-left font-mono text-sm text-slate-700 hover:bg-white" onClick={() => { updateField('ip_address', ip); setManualIP(false); setShowAvailableIPs(false) }}>{ip}</button>)}
+                      </div>
+                    )}
+                    {ipsTruncated && <p className="mt-2 text-xs text-slate-500">Показаны первые 4096 свободных адресов; остальные можно ввести вручную.</p>}
+                  </div>
+                )}
+                {configuredNetworks.length === 0 && formData.building_id && <p className="mt-1 text-xs text-slate-500">Для выбора свободного IP задайте сеть и маску в настройках здания.</p>}
+              </div>
               <Field id="hostname" label="Имя компьютера">
                 <input
                   id="hostname"
@@ -143,19 +207,9 @@ function ComputerForm({ computer, buildings, defaultBuildingId = null, onClose, 
                   onChange={(event) => updateField('hostname', event.target.value)}
                 />
               </Field>
-              {showFullName && (
-                <div className="sm:col-span-2">
-                  <Field id="full_name" label="ФИО">
-                    <input
-                      id="full_name"
-                      className="field"
-                      value={formData.full_name}
-                      placeholder="Иванов Пётр Сергеевич"
-                      onChange={(event) => updateField('full_name', event.target.value)}
-                    />
-                  </Field>
-                </div>
-              )}
+              <Field id="mac_address" label="MAC-адрес">
+                <input id="mac_address" className="field font-mono" value={formData.mac_address} placeholder="AA:BB:CC:DD:EE:FF" onChange={(event) => updateField('mac_address', event.target.value)} />
+              </Field>
               <Field id="phone" label="Телефон">
                 <input
                   id="phone"
@@ -166,14 +220,6 @@ function ComputerForm({ computer, buildings, defaultBuildingId = null, onClose, 
                   onChange={(event) => updateField('phone', event.target.value)}
                 />
               </Field>
-              <Field id="cabinet" label="Кабинет">
-                <input
-                  id="cabinet"
-                  className="field"
-                  value={formData.cabinet}
-                  onChange={(event) => updateField('cabinet', event.target.value)}
-                />
-              </Field>
               <Field id="department_name" label="Отдел">
                 <input
                   id="department_name"
@@ -182,21 +228,14 @@ function ComputerForm({ computer, buildings, defaultBuildingId = null, onClose, 
                   onChange={(event) => updateField('department_name', event.target.value)}
                 />
               </Field>
-              <Field id="pc_status" label="Статус">
-                <select
-                  id="pc_status"
-                  className="field"
-                  value={formData.pc_status}
-                  onChange={(event) => updateField('pc_status', event.target.value)}
-                >
-                  <option value="">Не указан</option>
-                  {statusOptions.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
+              <Field id="device_type" label="Тип устройства">
+                <select id="device_type" className="field" value={formData.device_type} onChange={(event) => updateField('device_type', event.target.value)}>
+                  <option value="computer">Компьютер</option><option value="printer">Принтер</option><option value="gateway">Шлюз</option><option value="other">Другое</option>
                 </select>
               </Field>
+              {formData.device_type === 'computer' && <Field id="operating_system" label="Операционная система">
+                <input id="operating_system" className="field" value={formData.operating_system} placeholder="Windows 11" onChange={(event) => updateField('operating_system', event.target.value)} />
+              </Field>}
               <div className="sm:col-span-2">
                 <Field id="note" label="Примечание">
                   <textarea

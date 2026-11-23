@@ -144,12 +144,18 @@ func spaHandler() http.Handler {
 }
 
 func registerRoutes(mux *http.ServeMux, db *sql.DB) {
+	auth := loadAuthConfig()
+	statusHandler, loginHandler := authHandlers(auth)
+	mux.HandleFunc("GET /auth/session", statusHandler)
+	mux.HandleFunc("DELETE /auth/session", statusHandler)
+	mux.HandleFunc("POST /auth/login", loginHandler)
 	mux.HandleFunc("GET /ping", pingHandler)
 	mux.HandleFunc("GET /buildings", listBuildingsHandler(db))
 	mux.HandleFunc("POST /buildings", createBuildingHandler(db))
 	mux.HandleFunc("GET /buildings/{id}", getBuildingHandler(db))
 	mux.HandleFunc("PUT /buildings/{id}", updateBuildingHandler(db))
 	mux.HandleFunc("DELETE /buildings/{id}", deleteBuildingHandler(db))
+	mux.HandleFunc("GET /building-networks/{id}/available-ips", availableIPsHandler(db))
 	mux.HandleFunc("GET /computers", listComputersHandler(db))
 	mux.HandleFunc("POST /computers", createComputerHandler(db))
 	mux.HandleFunc("GET /computers/export", exportComputersHandler(db))
@@ -179,7 +185,7 @@ func main() {
 		addr = ":" + addr
 	}
 
-	dbPath := getenv("DATABASE_PATH", "database.db")
+	dbPath := getenv("DATABASE_PATH", defaultDatabasePath())
 	db, err := openDB(dbPath)
 	if err != nil {
 		log.Fatalf("database: %v", err)
@@ -187,10 +193,14 @@ func main() {
 	defer db.Close()
 
 	mux := http.NewServeMux()
+	auth := loadAuthConfig()
+	if auth.username == "" || auth.password == "" {
+		log.Fatal("Настройте AUTH_USERNAME и AUTH_PASSWORD в mchs-crm.env рядом с программой")
+	}
 	registerRoutes(mux, db)
 
-	log.Printf("Server is running on http://localhost%s", addr)
-	if err := http.ListenAndServe(addr, logging(mux)); err != nil {
+	log.Printf("Server is listening on %s. On other PCs open http://<server-ip>%s", addr, addr)
+	if err := http.ListenAndServe(addr, logging(authMiddleware(auth, mux))); err != nil {
 		log.Fatal(err)
 	}
 }

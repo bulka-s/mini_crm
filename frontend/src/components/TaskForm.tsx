@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createTask, updateTask } from '../api/tasks'
 import type { Building, Computer } from '../types/computer'
-import type { Task, TaskFormData, TaskStatus } from '../types/task'
-import { TASK_STATUSES, emptyTaskForm, toTaskFormData } from '../types/task'
+import type { Task, TaskFormData } from '../types/task'
+import { emptyTaskForm, toTaskFormData } from '../types/task'
 import { computerLabel } from '../lib/format'
 
 interface TaskFormProps {
@@ -108,20 +108,6 @@ function TaskForm({ task, buildings, computers, onClose, onSaved }: TaskFormProp
                 value={formData.assignee}
                 onChange={(event) => updateField('assignee', event.target.value)}
               />
-            </label>
-            <label className="flex flex-col text-sm font-medium text-slate-700">
-              Статус
-              <select
-                className="field mt-1"
-                value={formData.status}
-                onChange={(event) => updateField('status', event.target.value as TaskStatus)}
-              >
-                {TASK_STATUSES.map((status) => (
-                  <option key={status.value} value={status.value}>
-                    {status.label}
-                  </option>
-                ))}
-              </select>
             </label>
             <label className="flex flex-col text-sm font-medium text-slate-700">
               Срок

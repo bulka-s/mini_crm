@@ -63,3 +63,6 @@ go.work.sum
 *.db
 *.db-shm
 *.db-wal
+
+# Local credentials for the shared app account
+mchs-crm.env

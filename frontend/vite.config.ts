@@ -13,6 +13,8 @@ export default defineConfig({
       '/buildings': 'http://localhost:8080',
       '/tasks': 'http://localhost:8080',
       '/ping': 'http://localhost:8080',
+      '/auth': 'http://localhost:8080',
+      '/building-networks': 'http://localhost:8080',
     },
   },
 })

@@ -27,7 +27,6 @@ const taskSelect = `
 	t.computer_id,
 	COALESCE(c.hostname, ''),
 	COALESCE(c.ip_address, ''),
-	COALESCE(c.full_name, ''),
 	COALESCE(t.status, ''),
 	COALESCE(t.due_date, ''),
 	COALESCE(t.created_at, '')
@@ -43,7 +42,6 @@ type Task struct {
 	ComputerID       *int   `json:"computer_id"`
 	ComputerHostname string `json:"computer_hostname"`
 	ComputerIP       string `json:"computer_ip"`
-	ComputerFullName string `json:"computer_full_name"`
 	Status           string `json:"status"`
 	StatusLabel      string `json:"status_label"`
 	DueDate          string `json:"due_date"`
@@ -169,7 +167,6 @@ func scanTask(scanner interface{ Scan(dest ...any) error }) (Task, error) {
 		&computerID,
 		&task.ComputerHostname,
 		&task.ComputerIP,
-		&task.ComputerFullName,
 		&task.Status,
 		&task.DueDate,
 		&task.CreatedAt,
@@ -205,7 +202,6 @@ func taskMatches(task Task, search string) bool {
 		task.BuildingName,
 		task.ComputerHostname,
 		task.ComputerIP,
-		task.ComputerFullName,
 		task.StatusLabel,
 		task.DueDate,
 	}

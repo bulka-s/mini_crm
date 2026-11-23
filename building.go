@@ -2,16 +2,91 @@ package main
 
 import (
 	"database/sql"
+	"encoding/binary"
+	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
 type Building struct {
-	ID             int    `json:"id"`
-	Name           string `json:"name"`
-	Address        string `json:"address"`
-	ShowFullName   bool   `json:"show_full_name"`
-	ComputersCount int    `json:"computers_count"`
+	ID             int               `json:"id"`
+	Name           string            `json:"name"`
+	Address        string            `json:"address"`
+	ComputersCount int               `json:"computers_count"`
+	Networks       []BuildingNetwork `json:"networks"`
+}
+
+type BuildingNetwork struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+	CIDR string `json:"cidr"`
+}
+
+func validBuildingNetworks(networks []BuildingNetwork) error {
+	seen := map[string]bool{}
+	for i := range networks {
+		networks[i].Name = strings.TrimSpace(networks[i].Name)
+		networks[i].CIDR = strings.TrimSpace(networks[i].CIDR)
+		if networks[i].Name == "" || networks[i].CIDR == "" {
+			return validationError{"укажите для сети название и адрес с маской, например 10.110.1.0/24"}
+		}
+		ip, subnet, err := net.ParseCIDR(networks[i].CIDR)
+		if err != nil || ip.To4() == nil {
+			return validationError{fmt.Sprintf("некорректная сеть %q: укажите IPv4-адрес и маску в формате CIDR", networks[i].Name)}
+		}
+		if ones, bits := subnet.Mask.Size(); bits != 32 || ones < 1 || ones > 32 {
+			return validationError{fmt.Sprintf("некорректная маска сети %q", networks[i].Name)}
+		}
+		if !ip.Equal(ip.To4().Mask(subnet.Mask)) {
+			return validationError{fmt.Sprintf("в сети %q укажите адрес сети, например 10.110.1.0/24", networks[i].Name)}
+		}
+		key := strings.ToLower(networks[i].Name)
+		if seen[key] {
+			return validationError{"названия сетей в здании должны отличаться"}
+		}
+		seen[key] = true
+	}
+	return nil
+}
+
+func getBuildingNetworks(db *sql.DB, buildingID int) ([]BuildingNetwork, error) {
+	rows, err := db.Query(`SELECT id, name, cidr FROM building_networks WHERE building_id = ? ORDER BY id`, buildingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BuildingNetwork{}
+	for rows.Next() {
+		var n BuildingNetwork
+		if err := rows.Scan(&n.ID, &n.Name, &n.CIDR); err != nil {
+			return nil, err
+		}
+		items = append(items, n)
+	}
+	return items, rows.Err()
+}
+
+func saveBuildingNetworks(db *sql.DB, buildingID int, networks []BuildingNetwork) error {
+	if err := validBuildingNetworks(networks); err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM building_networks WHERE building_id = ?`, buildingID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	for _, n := range networks {
+		if _, err = tx.Exec(`INSERT INTO building_networks (building_id, name, cidr) VALUES (?, ?, ?)`, buildingID, n.Name, n.CIDR); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 type buildingsOverview struct {
@@ -29,15 +104,14 @@ func validateBuilding(b Building) error {
 	if b.Name == "" {
 		return validationError{"название здания обязательно"}
 	}
-	return nil
+	return validBuildingNetworks(b.Networks)
 }
 
-func scanBuilding(id int, name, address string, showFullName int, count int) Building {
+func scanBuilding(id int, name, address string, count int) Building {
 	return Building{
 		ID:             id,
 		Name:           name,
 		Address:        address,
-		ShowFullName:   showFullName != 0,
 		ComputersCount: count,
 	}
 }
@@ -48,7 +122,6 @@ func listBuildings(db *sql.DB) (buildingsOverview, error) {
 			b.id,
 			COALESCE(b.name, ''),
 			COALESCE(b.address, ''),
-			COALESCE(b.show_full_name, 0),
 			COUNT(c.id)
 		FROM buildings b
 		LEFT JOIN computers c ON c.building_id = b.id
@@ -62,12 +135,17 @@ func listBuildings(db *sql.DB) (buildingsOverview, error) {
 
 	items := make([]Building, 0)
 	for rows.Next() {
-		var id, showFullName, count int
+		var id, count int
 		var name, address string
-		if err := rows.Scan(&id, &name, &address, &showFullName, &count); err != nil {
+		if err := rows.Scan(&id, &name, &address, &count); err != nil {
 			return buildingsOverview{}, err
 		}
-		items = append(items, scanBuilding(id, name, address, showFullName, count))
+		building := scanBuilding(id, name, address, count)
+		building.Networks, err = getBuildingNetworks(db, id)
+		if err != nil {
+			return buildingsOverview{}, err
+		}
+		items = append(items, building)
 	}
 	if err := rows.Err(); err != nil {
 		return buildingsOverview{}, err
@@ -90,7 +168,6 @@ func getBuildingByID(db *sql.DB, id int) (Building, error) {
 			b.id,
 			COALESCE(b.name, ''),
 			COALESCE(b.address, ''),
-			COALESCE(b.show_full_name, 0),
 			COUNT(c.id)
 		FROM buildings b
 		LEFT JOIN computers c ON c.building_id = b.id
@@ -98,12 +175,15 @@ func getBuildingByID(db *sql.DB, id int) (Building, error) {
 		GROUP BY b.id
 	`, id)
 
-	var buildingID, showFullName, count int
+	var buildingID, count int
 	var name, address string
-	if err := row.Scan(&buildingID, &name, &address, &showFullName, &count); err != nil {
+	if err := row.Scan(&buildingID, &name, &address, &count); err != nil {
 		return Building{}, err
 	}
-	return scanBuilding(buildingID, name, address, showFullName, count), nil
+	b := scanBuilding(buildingID, name, address, count)
+	networks, err := getBuildingNetworks(db, id)
+	b.Networks = networks
+	return b, err
 }
 
 func insertBuilding(db *sql.DB, building Building) (Building, error) {
@@ -113,16 +193,18 @@ func insertBuilding(db *sql.DB, building Building) (Building, error) {
 	}
 
 	result, err := db.Exec(
-		`INSERT INTO buildings (name, address, show_full_name) VALUES (?, ?, ?)`,
+		`INSERT INTO buildings (name, address) VALUES (?, ?)`,
 		building.Name,
 		building.Address,
-		boolToInt(building.ShowFullName),
 	)
 	if err != nil {
 		return Building{}, err
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
+		return Building{}, err
+	}
+	if err := saveBuildingNetworks(db, int(id), building.Networks); err != nil {
 		return Building{}, err
 	}
 	return getBuildingByID(db, int(id))
@@ -135,10 +217,9 @@ func updateBuilding(db *sql.DB, id int, building Building) (Building, error) {
 	}
 
 	result, err := db.Exec(
-		`UPDATE buildings SET name = ?, address = ?, show_full_name = ? WHERE id = ?`,
+		`UPDATE buildings SET name = ?, address = ? WHERE id = ?`,
 		building.Name,
 		building.Address,
-		boolToInt(building.ShowFullName),
 		id,
 	)
 	if err != nil {
@@ -150,6 +231,9 @@ func updateBuilding(db *sql.DB, id int, building Building) (Building, error) {
 	}
 	if affected == 0 {
 		return Building{}, sql.ErrNoRows
+	}
+	if err := saveBuildingNetworks(db, id, building.Networks); err != nil {
+		return Building{}, err
 	}
 	return getBuildingByID(db, id)
 }
@@ -272,5 +356,63 @@ func deleteBuildingHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func availableIPsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil || id < 1 {
+			writeError(w, http.StatusBadRequest, "Некорректный идентификатор сети")
+			return
+		}
+		var buildingID int
+		var cidr string
+		if err := db.QueryRow(`SELECT building_id, cidr FROM building_networks WHERE id = ?`, id).Scan(&buildingID, &cidr); err != nil {
+			if err == sql.ErrNoRows {
+				writeError(w, http.StatusNotFound, "Сеть не найдена")
+			} else {
+				writeError(w, http.StatusInternalServerError, "Не удалось загрузить сеть")
+			}
+			return
+		}
+		ip, subnet, err := net.ParseCIDR(cidr)
+		if err != nil || ip.To4() == nil {
+			writeError(w, http.StatusBadRequest, "Поддерживаются только сети IPv4")
+			return
+		}
+		base := ip.To4().Mask(subnet.Mask)
+		bits, _ := subnet.Mask.Size()
+		start := binary.BigEndian.Uint32(base)
+		count := uint64(1) << uint(32-bits)
+		first, last := uint64(start), uint64(start)+count-1
+		if bits < 31 {
+			first++
+			last--
+		}
+		rows, err := db.Query(`SELECT ip_address FROM computers WHERE building_id = ? AND TRIM(ip_address) != ''`, buildingID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось загрузить занятые адреса")
+			return
+		}
+		used := map[uint32]bool{}
+		for rows.Next() {
+			var value string
+			if rows.Scan(&value) == nil {
+				if parsed := net.ParseIP(value).To4(); parsed != nil {
+					used[binary.BigEndian.Uint32(parsed)] = true
+				}
+			}
+		}
+		_ = rows.Close()
+		ips := make([]string, 0, 512)
+		for value := first; value <= last && len(ips) < 4096; value++ {
+			if !used[uint32(value)] {
+				var bytes [4]byte
+				binary.BigEndian.PutUint32(bytes[:], uint32(value))
+				ips = append(ips, net.IP(bytes[:]).String())
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": ips, "truncated": uint64(len(ips)) < last-first+1 && len(ips) == 4096})
 	}
 }

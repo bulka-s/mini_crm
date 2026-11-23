@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
-import { deleteBuilding, getBuildings, updateBuilding } from '../api/buildings'
+import { deleteBuilding, getAvailableIPs, getBuildings } from '../api/buildings'
 import { deleteComputer, exportComputers, getComputers, importComputers } from '../api/computers'
 import BuildingForm from '../components/BuildingForm'
 import BuildingSidebar from '../components/BuildingSidebar'
@@ -25,6 +25,12 @@ function ComputersPage() {
   const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>('all')
   const [network, setNetwork] = useState<NetworkFilter>('all')
   const [showComputerForm, setShowComputerForm] = useState(false)
+  const [initialIPAddress, setInitialIPAddress] = useState('')
+  const [initialBuildingId, setInitialBuildingId] = useState<number | null>(null)
+  const [showFreeAddresses, setShowFreeAddresses] = useState(false)
+  const [freeAddressRows, setFreeAddressRows] = useState<{ buildingId: number; buildingName: string; networkName: string; cidr: string; ip: string }[]>([])
+  const [freeAddressTruncated, setFreeAddressTruncated] = useState(false)
+  const [loadingFreeAddresses, setLoadingFreeAddresses] = useState(false)
   const [editingComputer, setEditingComputer] = useState<Computer | null>(null)
   const [showBuildingForm, setShowBuildingForm] = useState(false)
   const [editingBuilding, setEditingBuilding] = useState<Building | null>(null)
@@ -93,22 +99,35 @@ function ComputersPage() {
   }, [computers, network, sortDir, sortKey])
 
   const groups = useMemo(
-    () => [
-      { key: 'local' as const, title: 'Локальная сеть 10.110.X.X', items: visibleComputers.filter((item) => item.network === 'local') },
-      { key: 'external' as const, title: 'Внешняя сеть 192.168.X.X', items: visibleComputers.filter((item) => item.network === 'external') },
-      { key: 'other' as const, title: 'Другие адреса', items: visibleComputers.filter((item) => item.network === 'other') },
-    ],
+    () => [...visibleComputers.reduce((map, item) => {
+      const title = item.network_label || 'Другие адреса'
+      const group = map.get(title) ?? { key: title, title, items: [] as Computer[] }
+      group.items.push(item)
+      map.set(title, group)
+      return map
+    }, new Map<string, { key: string; title: string; items: Computer[] }>()).values()],
     [visibleComputers],
   )
 
   const selectedBuilding = typeof buildingFilter === 'number'
     ? overview.items.find((item) => item.id === buildingFilter)
     : undefined
-  const showFullName = Boolean(selectedBuilding?.show_full_name)
+
+  const freeAddressGroups = useMemo(() => {
+    const grouped = new Map<string, { key: string; title: string; items: typeof freeAddressRows }>()
+    for (const row of freeAddressRows) {
+      const title = selectedBuilding ? row.networkName : `${row.buildingName} · ${row.networkName}`
+      const key = `${row.buildingId}-${row.networkName}`
+      const group = grouped.get(key) ?? { key, title, items: [] }
+      group.items.push(row)
+      grouped.set(key, group)
+    }
+    return [...grouped.values()]
+  }, [freeAddressRows, selectedBuilding])
 
   const currentBuilding = useMemo(() => {
     if (buildingFilter === 'all') {
-      return { name: 'Все здания', address: 'Сводный список рабочих станций', count: overview.total }
+      return { name: 'Все здания', address: 'Общий реестр устройств', count: overview.total }
     }
     if (buildingFilter === 'none') {
       return { name: 'Без здания', address: 'Компьютеры без назначения', count: overview.unassigned }
@@ -136,6 +155,15 @@ function ComputersPage() {
 
   function openCreateComputer() {
     setEditingComputer(null)
+    setInitialIPAddress('')
+    setInitialBuildingId(typeof buildingFilter === 'number' ? buildingFilter : null)
+    setShowComputerForm(true)
+  }
+
+  function openCreateComputerWithIP(ip: string, buildingId: number) {
+    setEditingComputer(null)
+    setInitialIPAddress(ip)
+    setInitialBuildingId(buildingId)
     setShowComputerForm(true)
   }
 
@@ -151,6 +179,7 @@ function ComputersPage() {
 
   async function handleComputerSaved(saved: Computer) {
     setShowComputerForm(false)
+    setShowFreeAddresses(false)
     setEditingComputer(null)
     await refreshAll()
     setSelected(saved)
@@ -162,23 +191,40 @@ function ComputersPage() {
     setEditingBuilding(null)
     await loadBuildings()
     setBuildingFilter(saved.id)
+    setShowFreeAddresses(false)
     setNotice(null)
   }
 
-  async function toggleShowFullName() {
-    if (!selectedBuilding) return
+  async function toggleFreeAddresses() {
+    if (showFreeAddresses) { setShowFreeAddresses(false); return }
+    const targetBuildings = selectedBuilding
+      ? [selectedBuilding]
+      : buildingFilter === 'all'
+        ? overview.items
+        : []
+    if (targetBuildings.length === 0) return
+    setShowFreeAddresses(true)
+    setLoadingFreeAddresses(true)
     try {
-      const saved = await updateBuilding(selectedBuilding.id, {
-        name: selectedBuilding.name,
-        address: selectedBuilding.address,
-        show_full_name: !selectedBuilding.show_full_name,
-      })
-      setOverview((current) => ({
-        ...current,
-        items: current.items.map((item) => (item.id === saved.id ? saved : item)),
-      }))
+      const configured = targetBuildings.flatMap((building) => building.networks
+        .filter((item) => item.cidr && item.id)
+        .map((network) => ({ building, network })))
+      if (configured.length === 0) {
+        setFreeAddressRows([])
+        setFreeAddressTruncated(false)
+      }
+      const lists = await Promise.all(configured.map(async ({ building, network }) => ({
+        building,
+        network,
+        result: await getAvailableIPs(network.id as number),
+      })))
+      setFreeAddressRows(lists.flatMap(({ building, network, result }) => result.items.map((ip) => ({ buildingId: building.id, buildingName: building.name, networkName: network.name, cidr: network.cidr, ip }))))
+      setFreeAddressTruncated(lists.some(({ result }) => result.truncated))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось изменить отображение ФИО')
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить свободные адреса')
+      setShowFreeAddresses(false)
+    } finally {
+      setLoadingFreeAddresses(false)
     }
   }
 
@@ -201,6 +247,7 @@ function ComputersPage() {
       const nextFilter: BuildingFilter =
         buildingFilter === pendingDeleteBuilding.id ? 'all' : buildingFilter
       await deleteBuilding(pendingDeleteBuilding.id)
+      setShowFreeAddresses(false)
       setBuildingFilter(nextFilter)
       setPendingDeleteBuilding(null)
       await Promise.all([loadComputers(search.trim(), nextFilter), loadBuildings()])
@@ -237,17 +284,15 @@ function ComputersPage() {
   }
 
   const groupedView = network === 'all'
-  const defaultBuildingId = typeof buildingFilter === 'number' ? buildingFilter : null
-  const selectedShowFullName = selected
-    ? Boolean(overview.items.find((item) => item.id === selected.building_id)?.show_full_name)
-    : false
-
+  const canShowFreeAddresses = selectedBuilding
+    ? selectedBuilding.networks.some((item) => item.cidr)
+    : buildingFilter === 'all' && overview.items.some((building) => building.networks.some((item) => item.cidr))
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="workspace-layout flex min-h-0 flex-1">
       <BuildingSidebar
         overview={overview}
         selected={buildingFilter}
-        onSelect={setBuildingFilter}
+        onSelect={(value) => { setBuildingFilter(value); setShowFreeAddresses(false) }}
         onAdd={() => {
           setEditingBuilding(null)
           setShowBuildingForm(true)
@@ -259,23 +304,23 @@ function ComputersPage() {
         onDelete={setPendingDeleteBuilding}
       />
 
-      <main className="min-w-0 flex-1 overflow-auto p-5">
-        <section className="border border-slate-200 bg-white">
+      <main className="workspace-main min-w-0 flex-1 overflow-auto p-5 md:p-7">
+        <section className="surface-card overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-slate-900">{currentBuilding.name}</h2>
               <p className="mt-1 text-sm text-slate-500">
-                {currentBuilding.address || 'Адрес не указан'} · компьютеров: {currentBuilding.count}
+                {currentBuilding.address || 'Адрес не указан'} · устройств: {currentBuilding.count}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {selectedBuilding && (
-                <button type="button" className="btn btn-ghost" onClick={() => void toggleShowFullName()}>
-                  {showFullName ? 'Скрыть ФИО' : 'Показывать ФИО'}
+              {canShowFreeAddresses && (
+                <button type="button" className={`btn ${showFreeAddresses ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => void toggleFreeAddresses()}>
+                  {showFreeAddresses ? 'Скрыть свободные IP' : 'Показать свободные IP'}
                 </button>
               )}
               <button type="button" className="btn btn-primary" onClick={openCreateComputer}>
-                Добавить компьютер
+                Добавить устройство
               </button>
               <button type="button" className="btn btn-ghost" onClick={() => fileInputRef.current?.click()}>
                 Импорт CSV
@@ -298,7 +343,7 @@ function ComputersPage() {
               <input
                 type="search"
                 value={search}
-                placeholder={showFullName ? 'Поиск по ФИО, IP, кабинету, зданию...' : 'Поиск по IP, имени, кабинету, зданию...'}
+                placeholder="Поиск по IP, MAC, имени устройства, отделу или зданию..."
                 className="field pr-10"
                 onChange={(event) => setSearch(event.target.value)}
               />
@@ -350,10 +395,24 @@ function ComputersPage() {
             </div>
           ) : groupedView ? (
             <div className="space-y-4">
+              {showFreeAddresses && <div className="surface-card overflow-hidden">
+                <div className="border-b border-slate-100 bg-sky-50/60 px-4 py-2.5">
+                  <h3 className="text-sm font-medium text-slate-800">Свободные IP <span className="ml-2 text-xs text-slate-500">{loadingFreeAddresses ? 'Загрузка…' : freeAddressRows.length}</span></h3>
+                </div>
+                {loadingFreeAddresses ? <p className="p-5 text-center text-sm text-slate-500">Загружаю адреса подсетей…</p> : freeAddressRows.length === 0 ? <p className="p-5 text-center text-sm text-slate-500">Свободных адресов не найдено.</p> : (
+                  <div className="max-h-80 overflow-auto">
+                    {freeAddressGroups.map((group) => <div key={group.key}>
+                      <div className="sticky top-0 flex items-center justify-between border-y border-slate-100 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600"><span>{group.title}</span><span>{group.items.length}</span></div>
+                      <div className="flex flex-wrap gap-2 p-3">{group.items.map((row) => <button key={`${row.buildingId}-${row.networkName}-${row.ip}`} type="button" title={`${row.cidr} · Добавить устройство`} className="rounded-md border border-sky-100 bg-sky-50 px-2.5 py-1.5 font-mono text-xs text-sky-900 hover:border-sky-300 hover:bg-sky-100" onClick={() => openCreateComputerWithIP(row.ip, row.buildingId)}>{row.ip}</button>)}</div>
+                    </div>)}
+                    {freeAddressTruncated && <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">В некоторых сетях отображены первые 4096 свободных адресов.</p>}
+                  </div>
+                )}
+              </div>}
               {groups
                 .filter((group) => group.items.length > 0)
                 .map((group) => (
-                  <div key={group.key} className="overflow-hidden border border-slate-200 bg-white">
+                  <div key={group.key} className="surface-card overflow-hidden">
                     <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-2">
                       <h3 className="text-sm font-medium text-slate-800">{group.title}</h3>
                       <span className="text-xs text-slate-400">{group.items.length}</span>
@@ -363,7 +422,6 @@ function ComputersPage() {
                       selectedId={selected?.id}
                       sortKey={sortKey}
                       sortDir={sortDir}
-                      showFullName={showFullName}
                       onSort={handleSort}
                       onSelect={setSelected}
                       onEdit={openEditComputer}
@@ -373,13 +431,12 @@ function ComputersPage() {
                 ))}
             </div>
           ) : (
-            <div className="overflow-hidden border border-slate-200 bg-white">
+            <div className="surface-card overflow-hidden">
               <ComputersTable
                 computers={visibleComputers}
                 selectedId={selected?.id}
                 sortKey={sortKey}
                 sortDir={sortDir}
-                showFullName={showFullName}
                 onSort={handleSort}
                 onSelect={setSelected}
                 onEdit={openEditComputer}
@@ -393,7 +450,6 @@ function ComputersPage() {
       {selected && !showComputerForm && (
         <ComputerDetails
           computer={selected}
-          showFullName={selectedShowFullName}
           onClose={() => setSelected(null)}
           onEdit={() => openEditComputer(selected)}
           onDelete={() => setPendingDeleteComputer(selected)}
@@ -402,10 +458,11 @@ function ComputersPage() {
 
       {showComputerForm && (
         <ComputerForm
-          key={editingComputer?.id ?? `new-${defaultBuildingId ?? 'none'}`}
+          key={editingComputer?.id ?? `new-${initialBuildingId ?? 'none'}-${initialIPAddress}`}
           computer={editingComputer}
           buildings={overview.items}
-          defaultBuildingId={defaultBuildingId}
+          defaultBuildingId={initialBuildingId}
+          defaultIPAddress={initialIPAddress}
           onClose={() => setShowComputerForm(false)}
           onSaved={(saved) => void handleComputerSaved(saved)}
         />

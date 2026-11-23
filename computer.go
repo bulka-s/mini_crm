@@ -18,15 +18,13 @@ const computerSelect = `
 	c.id,
 	COALESCE(c.ip_address, ''),
 	COALESCE(c.hostname, ''),
-	COALESCE(c.full_name, ''),
-	COALESCE(c.last_name, ''),
-	COALESCE(c.first_name, ''),
-	COALESCE(c.middle_name, ''),
 	COALESCE(c.phone, ''),
-	COALESCE(c.cabinet, ''),
 	COALESCE(c.department_name, ''),
 	COALESCE(c.pc_status, ''),
 	COALESCE(c.note, ''),
+	COALESCE(c.device_type, 'computer'),
+	COALESCE(c.operating_system, ''),
+	COALESCE(c.mac_address, ''),
 	c.building_id,
 	COALESCE(b.name, ''),
 	COALESCE(b.address, '')
@@ -36,83 +34,61 @@ type Computer struct {
 	ID              int    `json:"id"`
 	IPAddress       string `json:"ip_address"`
 	Hostname        string `json:"hostname"`
-	FullName        string `json:"full_name"`
 	Phone           string `json:"phone"`
-	Cabinet         string `json:"cabinet"`
+	MACAddress      string `json:"mac_address"`
 	DepartmentName  string `json:"department_name"`
 	PCStatus        string `json:"pc_status"`
+	DeviceType      string `json:"device_type"`
+	OperatingSystem string `json:"operating_system"`
 	Note            string `json:"note"`
 	BuildingID      *int   `json:"building_id"`
 	BuildingName    string `json:"building_name"`
 	BuildingAddress string `json:"building_address"`
 	Network         string `json:"network"`
 	NetworkLabel    string `json:"network_label"`
-
-	LastName   string `json:"-"`
-	FirstName  string `json:"-"`
-	MiddleName string `json:"-"`
 }
 
 type computerInput struct {
-	IPAddress      string `json:"ip_address"`
-	Hostname       string `json:"hostname"`
-	FullName       string `json:"full_name"`
-	LastName       string `json:"last_name"`
-	FirstName      string `json:"first_name"`
-	MiddleName     string `json:"middle_name"`
-	Phone          string `json:"phone"`
-	Cabinet        string `json:"cabinet"`
-	DepartmentName string `json:"department_name"`
-	PCStatus       string `json:"pc_status"`
-	Note           string `json:"note"`
-	BuildingID     *int   `json:"building_id"`
+	IPAddress       string `json:"ip_address"`
+	Hostname        string `json:"hostname"`
+	Phone           string `json:"phone"`
+	MACAddress      string `json:"mac_address"`
+	DepartmentName  string `json:"department_name"`
+	PCStatus        string `json:"pc_status"`
+	DeviceType      string `json:"device_type"`
+	OperatingSystem string `json:"operating_system"`
+	Note            string `json:"note"`
+	BuildingID      *int   `json:"building_id"`
 }
 
 func (in computerInput) toComputer() Computer {
-	fullName := strings.TrimSpace(in.FullName)
-	if fullName == "" {
-		fullName = joinNameParts(in.LastName, in.FirstName, in.MiddleName)
-	}
-	last, first, middle := splitFullName(fullName)
 	return Computer{
-		IPAddress:      strings.TrimSpace(in.IPAddress),
-		Hostname:       strings.TrimSpace(in.Hostname),
-		FullName:       fullName,
-		LastName:       last,
-		FirstName:      first,
-		MiddleName:     middle,
-		Phone:          strings.TrimSpace(in.Phone),
-		Cabinet:        strings.TrimSpace(in.Cabinet),
-		DepartmentName: strings.TrimSpace(in.DepartmentName),
-		PCStatus:       strings.TrimSpace(in.PCStatus),
-		Note:           strings.TrimSpace(in.Note),
-		BuildingID:     in.BuildingID,
+		IPAddress:       strings.TrimSpace(in.IPAddress),
+		Hostname:        strings.TrimSpace(in.Hostname),
+		Phone:           strings.TrimSpace(in.Phone),
+		MACAddress:      normalizeMACAddress(in.MACAddress),
+		DepartmentName:  strings.TrimSpace(in.DepartmentName),
+		PCStatus:        strings.TrimSpace(in.PCStatus),
+		DeviceType:      defaultString(strings.TrimSpace(in.DeviceType), "computer"),
+		OperatingSystem: strings.TrimSpace(in.OperatingSystem),
+		Note:            strings.TrimSpace(in.Note),
+		BuildingID:      in.BuildingID,
 	}
 }
 
-func joinNameParts(parts ...string) string {
-	values := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			values = append(values, part)
-		}
+func normalizeMACAddress(value string) string {
+	value = strings.TrimSpace(value)
+	if parsed, err := net.ParseMAC(value); err == nil && len(parsed) == 6 {
+		return parsed.String()
 	}
-	return strings.Join(values, " ")
+	return value
 }
 
-func splitFullName(fullName string) (last, first, middle string) {
-	parts := strings.Fields(strings.TrimSpace(fullName))
-	switch len(parts) {
-	case 0:
-		return "", "", ""
-	case 1:
-		return parts[0], "", ""
-	case 2:
-		return parts[0], parts[1], ""
-	default:
-		return parts[0], parts[1], strings.Join(parts[2:], " ")
+func defaultString(value, fallback string) string {
+	if value == "" {
+		return fallback
 	}
+	return value
 }
 
 func applyNetwork(computer *Computer) {
@@ -120,12 +96,41 @@ func applyNetwork(computer *Computer) {
 	computer.NetworkLabel = networkLabel(computer.Network)
 }
 
+func applyBuildingNetworkLabel(db *sql.DB, computer *Computer) {
+	if computer.BuildingID == nil || computer.IPAddress == "" {
+		return
+	}
+	rows, err := db.Query(`SELECT name, cidr FROM building_networks WHERE building_id = ? AND cidr != '' ORDER BY id`, *computer.BuildingID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	ip := net.ParseIP(computer.IPAddress)
+	for rows.Next() {
+		var name, cidr string
+		if rows.Scan(&name, &cidr) != nil {
+			continue
+		}
+		_, subnet, err := net.ParseCIDR(cidr)
+		if err == nil && subnet.Contains(ip) {
+			computer.NetworkLabel = name
+			return
+		}
+	}
+}
+
 func validateComputer(c Computer) error {
-	if c.FullName == "" && c.Hostname == "" && c.IPAddress == "" {
-		return validationError{"укажите IP-адрес, имя компьютера или ФИО"}
+	if c.Hostname == "" && c.IPAddress == "" {
+		return validationError{"укажите IP-адрес или имя устройства"}
 	}
 	if c.IPAddress != "" && net.ParseIP(c.IPAddress) == nil {
 		return validationError{"некорректный IP-адрес"}
+	}
+	if c.MACAddress != "" {
+		mac, err := net.ParseMAC(c.MACAddress)
+		if err != nil || len(mac) != 6 {
+			return validationError{"некорректный MAC-адрес, используйте формат AA:BB:CC:DD:EE:FF"}
+		}
 	}
 	return nil
 }
@@ -152,15 +157,13 @@ func scanComputer(scanner interface{ Scan(dest ...any) error }) (Computer, error
 		&computer.ID,
 		&computer.IPAddress,
 		&computer.Hostname,
-		&computer.FullName,
-		&computer.LastName,
-		&computer.FirstName,
-		&computer.MiddleName,
 		&computer.Phone,
-		&computer.Cabinet,
 		&computer.DepartmentName,
 		&computer.PCStatus,
 		&computer.Note,
+		&computer.DeviceType,
+		&computer.OperatingSystem,
+		&computer.MACAddress,
 		&buildingID,
 		&computer.BuildingName,
 		&computer.BuildingAddress,
@@ -169,9 +172,6 @@ func scanComputer(scanner interface{ Scan(dest ...any) error }) (Computer, error
 		return Computer{}, err
 	}
 	computer.BuildingID = intPtr(buildingID)
-	if strings.TrimSpace(computer.FullName) == "" {
-		computer.FullName = joinNameParts(computer.LastName, computer.FirstName, computer.MiddleName)
-	}
 	applyNetwork(&computer)
 	return computer, nil
 }
@@ -185,6 +185,7 @@ func getComputerByID(db *sql.DB, id int) (Computer, error) {
 	if err != nil {
 		return Computer{}, err
 	}
+	applyBuildingNetworkLabel(db, &computer)
 	return computer, nil
 }
 
@@ -198,13 +199,11 @@ func computerMatches(computer Computer, search string) bool {
 		strconv.Itoa(computer.ID),
 		computer.IPAddress,
 		computer.Hostname,
-		computer.FullName,
-		computer.LastName,
-		computer.FirstName,
-		computer.MiddleName,
+		computer.MACAddress,
 		computer.Phone,
-		computer.Cabinet,
 		computer.DepartmentName,
+		computer.DeviceType,
+		computer.OperatingSystem,
 		computer.PCStatus,
 		computer.Note,
 		computer.BuildingName,
@@ -228,8 +227,8 @@ func sortComputers(computers []Computer) {
 		if left.IPAddress != right.IPAddress {
 			return lessByIP(left.IPAddress, right.IPAddress)
 		}
-		if left.FullName != right.FullName {
-			return strings.ToLower(left.FullName) < strings.ToLower(right.FullName)
+		if left.Hostname != right.Hostname {
+			return strings.ToLower(left.Hostname) < strings.ToLower(right.Hostname)
 		}
 		return left.ID < right.ID
 	})
@@ -272,6 +271,7 @@ func listComputers(db *sql.DB, filter computerFilter) ([]Computer, error) {
 		if err != nil {
 			return nil, err
 		}
+		applyBuildingNetworkLabel(db, &computer)
 		computers = append(computers, computer)
 	}
 	if err := rows.Err(); err != nil {
@@ -295,25 +295,27 @@ func listComputers(db *sql.DB, filter computerFilter) ([]Computer, error) {
 }
 
 func insertComputer(db *sql.DB, computer Computer) (Computer, error) {
+	computer.MACAddress = normalizeMACAddress(computer.MACAddress)
 	if err := validateComputer(computer); err != nil {
+		return Computer{}, err
+	}
+	if err := ensureUniqueComputerIP(db, computer, 0); err != nil {
 		return Computer{}, err
 	}
 
 	result, err := db.Exec(`INSERT INTO computers (
 		ip_address, hostname, full_name, last_name, first_name, middle_name,
-		phone, cabinet, department_name, pc_status, note, building_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		phone, cabinet, department_name, pc_status, note, device_type, operating_system, mac_address, building_id
+	) VALUES (?, ?, '', '', '', '', ?, '', ?, ?, ?, ?, ?, ?, ?)`,
 		computer.IPAddress,
 		computer.Hostname,
-		computer.FullName,
-		computer.LastName,
-		computer.FirstName,
-		computer.MiddleName,
 		computer.Phone,
-		computer.Cabinet,
 		computer.DepartmentName,
 		computer.PCStatus,
 		computer.Note,
+		computer.DeviceType,
+		computer.OperatingSystem,
+		computer.MACAddress,
 		nullInt(computer.BuildingID),
 	)
 	if err != nil {
@@ -327,35 +329,40 @@ func insertComputer(db *sql.DB, computer Computer) (Computer, error) {
 }
 
 func updateComputer(db *sql.DB, id int, computer Computer) (Computer, error) {
+	computer.MACAddress = normalizeMACAddress(computer.MACAddress)
 	if err := validateComputer(computer); err != nil {
+		return Computer{}, err
+	}
+	if err := ensureUniqueComputerIP(db, computer, id); err != nil {
 		return Computer{}, err
 	}
 
 	result, err := db.Exec(`UPDATE computers SET
 		ip_address = ?,
 		hostname = ?,
-		full_name = ?,
-		last_name = ?,
-		first_name = ?,
-		middle_name = ?,
+		full_name = '',
+		last_name = '',
+		first_name = '',
+		middle_name = '',
 		phone = ?,
-		cabinet = ?,
+		cabinet = '',
 		department_name = ?,
 		pc_status = ?,
 		note = ?,
+		device_type = ?,
+		operating_system = ?,
+		mac_address = ?,
 		building_id = ?
 		WHERE id = ?`,
 		computer.IPAddress,
 		computer.Hostname,
-		computer.FullName,
-		computer.LastName,
-		computer.FirstName,
-		computer.MiddleName,
 		computer.Phone,
-		computer.Cabinet,
 		computer.DepartmentName,
 		computer.PCStatus,
 		computer.Note,
+		computer.DeviceType,
+		computer.OperatingSystem,
+		computer.MACAddress,
 		nullInt(computer.BuildingID),
 		id,
 	)
@@ -370,6 +377,21 @@ func updateComputer(db *sql.DB, id int, computer Computer) (Computer, error) {
 		return Computer{}, sql.ErrNoRows
 	}
 	return getComputerByID(db, id)
+}
+
+func ensureUniqueComputerIP(db *sql.DB, computer Computer, exceptID int) error {
+	if computer.IPAddress == "" {
+		return nil
+	}
+	var exists int
+	err := db.QueryRow(`SELECT 1 FROM computers WHERE building_id IS ? AND ip_address = ? AND id != ? LIMIT 1`, nullInt(computer.BuildingID), computer.IPAddress, exceptID).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return validationError{"этот IP-адрес уже занят в выбранном здании"}
 }
 
 func deleteComputer(db *sql.DB, id int) error {
@@ -485,11 +507,11 @@ var csvHeaders = []string{
 	"IP-адрес",
 	"Сеть",
 	"Имя компьютера",
-	"ФИО",
+	"MAC-адрес",
 	"Телефон",
-	"Кабинет",
 	"Отдел",
-	"Статус",
+	"Тип устройства",
+	"Операционная система",
 	"Примечание",
 	"Здание",
 	"Адрес здания",
@@ -522,11 +544,11 @@ func exportComputersHandler(db *sql.DB) http.HandlerFunc {
 				computer.IPAddress,
 				computer.NetworkLabel,
 				computer.Hostname,
-				computer.FullName,
+				computer.MACAddress,
 				computer.Phone,
-				computer.Cabinet,
 				computer.DepartmentName,
-				computer.PCStatus,
+				computer.DeviceType,
+				computer.OperatingSystem,
 				computer.Note,
 				computer.BuildingName,
 				computer.BuildingAddress,
@@ -589,8 +611,8 @@ func importComputersHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		mapping := mapCSVHeaders(records[0])
-		if mapping["full_name"] < 0 && mapping["last_name"] < 0 && mapping["ip_address"] < 0 && mapping["hostname"] < 0 {
-			writeError(w, http.StatusBadRequest, "Не найдены столбцы «IP-адрес», «Имя компьютера» или «ФИО»")
+		if mapping["ip_address"] < 0 && mapping["hostname"] < 0 {
+			writeError(w, http.StatusBadRequest, "Не найдены столбцы «IP-адрес» или «Имя компьютера»")
 			return
 		}
 
@@ -606,7 +628,7 @@ func importComputersHandler(db *sql.DB) http.HandlerFunc {
 				importErrors = append(importErrors, fmt.Sprintf("строка %d: %v", rowNumber, err))
 				continue
 			}
-			if computer.FullName == "" && computer.Hostname == "" && computer.IPAddress == "" {
+			if computer.Hostname == "" && computer.IPAddress == "" {
 				skipped++
 				continue
 			}
@@ -628,52 +650,46 @@ func importComputersHandler(db *sql.DB) http.HandlerFunc {
 
 func mapCSVHeaders(headers []string) map[string]int {
 	aliases := map[string]string{
-		"ip":              "ip_address",
-		"ip address":      "ip_address",
-		"ip адрес":        "ip_address",
-		"ip-адрес":        "ip_address",
-		"hostname":        "hostname",
-		"имя компьютера":  "hostname",
-		"компьютер":       "hostname",
-		"full name":       "full_name",
-		"fio":             "full_name",
-		"фио":             "full_name",
-		"пользователь":    "full_name",
-		"last name":       "last_name",
-		"фамилия":         "last_name",
-		"first name":      "first_name",
-		"имя":             "first_name",
-		"middle name":     "middle_name",
-		"отчество":        "middle_name",
-		"phone":           "phone",
-		"телефон":         "phone",
-		"cabinet":         "cabinet",
-		"кабинет":         "cabinet",
-		"department name": "department_name",
-		"department":      "department_name",
-		"отдел":           "department_name",
-		"pc status":       "pc_status",
-		"status":          "pc_status",
-		"статус":          "pc_status",
-		"note":            "note",
-		"примечание":      "note",
-		"building":        "building_name",
-		"здание":          "building_name",
-		"address":         "building_address",
-		"адрес":           "building_address",
-		"адрес здания":    "building_address",
+		"ip":               "ip_address",
+		"ip address":       "ip_address",
+		"ip адрес":         "ip_address",
+		"ip-адрес":         "ip_address",
+		"hostname":         "hostname",
+		"имя компьютера":   "hostname",
+		"компьютер":        "hostname",
+		"mac":              "mac_address",
+		"mac address":      "mac_address",
+		"mac адрес":        "mac_address",
+		"phone":            "phone",
+		"телефон":          "phone",
+		"department name":  "department_name",
+		"department":       "department_name",
+		"отдел":            "department_name",
+		"device type":      "device_type",
+		"тип устройства":   "device_type",
+		"operating system": "operating_system",
+		"os":               "operating_system",
+		"операционная система": "operating_system",
+		"pc status":    "pc_status",
+		"status":       "pc_status",
+		"статус":       "pc_status",
+		"note":         "note",
+		"примечание":   "note",
+		"building":     "building_name",
+		"здание":       "building_name",
+		"address":      "building_address",
+		"адрес":        "building_address",
+		"адрес здания": "building_address",
 	}
 
 	mapping := map[string]int{
 		"ip_address":       -1,
 		"hostname":         -1,
-		"full_name":        -1,
-		"last_name":        -1,
-		"first_name":       -1,
-		"middle_name":      -1,
+		"mac_address":      -1,
 		"phone":            -1,
-		"cabinet":          -1,
 		"department_name":  -1,
+		"device_type":      -1,
+		"operating_system": -1,
 		"pc_status":        -1,
 		"note":             -1,
 		"building_name":    -1,
@@ -711,28 +727,21 @@ func computerFromCSV(db *sql.DB, record []string, mapping map[string]int) (Compu
 		return strings.TrimSpace(record[index])
 	}
 
-	fullName := cell("full_name")
-	if fullName == "" {
-		fullName = joinNameParts(cell("last_name"), cell("first_name"), cell("middle_name"))
-	}
-	last, first, middle := splitFullName(fullName)
 	buildingID, err := findOrCreateBuilding(db, cell("building_name"), cell("building_address"))
 	if err != nil {
 		return Computer{}, err
 	}
 
 	return Computer{
-		IPAddress:      cell("ip_address"),
-		Hostname:       cell("hostname"),
-		FullName:       fullName,
-		LastName:       last,
-		FirstName:      first,
-		MiddleName:     middle,
-		Phone:          cell("phone"),
-		Cabinet:        cell("cabinet"),
-		DepartmentName: cell("department_name"),
-		PCStatus:       cell("pc_status"),
-		Note:           cell("note"),
-		BuildingID:     buildingID,
+		IPAddress:       cell("ip_address"),
+		Hostname:        cell("hostname"),
+		Phone:           cell("phone"),
+		MACAddress:      cell("mac_address"),
+		DepartmentName:  cell("department_name"),
+		DeviceType:      defaultString(cell("device_type"), "computer"),
+		OperatingSystem: cell("operating_system"),
+		PCStatus:        cell("pc_status"),
+		Note:            cell("note"),
+		BuildingID:      buildingID,
 	}, nil
 }
