@@ -41,8 +41,9 @@ function ComputerDetails({ computer, onClose, onEdit, onDelete }: ComputerDetail
             <span className="font-mono">{displayValue(computer.ip_address)}</span>
           </DetailRow>
           <DetailRow label="Сеть">{displayValue(computer.network_label)}</DetailRow>
-          <DetailRow label="Тип устройства">{computer.device_type === 'printer' ? 'Принтер' : computer.device_type === 'gateway' ? 'Шлюз' : computer.device_type === 'computer' ? 'Компьютер' : 'Другое'}</DetailRow>
+          <DetailRow label="Тип устройства">{computer.device_type === 'printer' ? 'Принтер' : computer.device_type === 'gateway' ? 'Шлюз' : computer.device_type === 'phone' ? 'Телефон' : computer.device_type === 'computer' ? 'Компьютер' : 'Другое'}</DetailRow>
           <DetailRow label="Имя устройства">{displayValue(computer.hostname)}</DetailRow>
+          <DetailRow label="ФИО">{displayValue(computer.full_name)}</DetailRow>
           {computer.device_type === 'computer' && <DetailRow label="ОС">{displayValue(computer.operating_system)}</DetailRow>}
           <DetailRow label="MAC-адрес"><span className="font-mono">{displayValue(computer.mac_address)}</span></DetailRow>
           <DetailRow label="Телефон">{displayValue(computer.phone)}</DetailRow>

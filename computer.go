@@ -18,6 +18,7 @@ const computerSelect = `
 	c.id,
 	COALESCE(c.ip_address, ''),
 	COALESCE(c.hostname, ''),
+	COALESCE(c.full_name, ''),
 	COALESCE(c.phone, ''),
 	COALESCE(c.department_name, ''),
 	COALESCE(c.pc_status, ''),
@@ -34,6 +35,7 @@ type Computer struct {
 	ID              int    `json:"id"`
 	IPAddress       string `json:"ip_address"`
 	Hostname        string `json:"hostname"`
+	FullName        string `json:"full_name"`
 	Phone           string `json:"phone"`
 	MACAddress      string `json:"mac_address"`
 	DepartmentName  string `json:"department_name"`
@@ -51,6 +53,7 @@ type Computer struct {
 type computerInput struct {
 	IPAddress       string `json:"ip_address"`
 	Hostname        string `json:"hostname"`
+	FullName        string `json:"full_name"`
 	Phone           string `json:"phone"`
 	MACAddress      string `json:"mac_address"`
 	DepartmentName  string `json:"department_name"`
@@ -65,6 +68,7 @@ func (in computerInput) toComputer() Computer {
 	return Computer{
 		IPAddress:       strings.TrimSpace(in.IPAddress),
 		Hostname:        strings.TrimSpace(in.Hostname),
+		FullName:        strings.TrimSpace(in.FullName),
 		Phone:           strings.TrimSpace(in.Phone),
 		MACAddress:      normalizeMACAddress(in.MACAddress),
 		DepartmentName:  strings.TrimSpace(in.DepartmentName),
@@ -157,6 +161,7 @@ func scanComputer(scanner interface{ Scan(dest ...any) error }) (Computer, error
 		&computer.ID,
 		&computer.IPAddress,
 		&computer.Hostname,
+		&computer.FullName,
 		&computer.Phone,
 		&computer.DepartmentName,
 		&computer.PCStatus,
@@ -199,6 +204,7 @@ func computerMatches(computer Computer, search string) bool {
 		strconv.Itoa(computer.ID),
 		computer.IPAddress,
 		computer.Hostname,
+		computer.FullName,
 		computer.MACAddress,
 		computer.Phone,
 		computer.DepartmentName,
@@ -306,9 +312,10 @@ func insertComputer(db *sql.DB, computer Computer) (Computer, error) {
 	result, err := db.Exec(`INSERT INTO computers (
 		ip_address, hostname, full_name, last_name, first_name, middle_name,
 		phone, cabinet, department_name, pc_status, note, device_type, operating_system, mac_address, building_id
-	) VALUES (?, ?, '', '', '', '', ?, '', ?, ?, ?, ?, ?, ?, ?)`,
+	) VALUES (?, ?, ?, '', '', '', ?, '', ?, ?, ?, ?, ?, ?, ?)`,
 		computer.IPAddress,
 		computer.Hostname,
+		computer.FullName,
 		computer.Phone,
 		computer.DepartmentName,
 		computer.PCStatus,
@@ -340,7 +347,7 @@ func updateComputer(db *sql.DB, id int, computer Computer) (Computer, error) {
 	result, err := db.Exec(`UPDATE computers SET
 		ip_address = ?,
 		hostname = ?,
-		full_name = '',
+		full_name = ?,
 		last_name = '',
 		first_name = '',
 		middle_name = '',
@@ -356,6 +363,7 @@ func updateComputer(db *sql.DB, id int, computer Computer) (Computer, error) {
 		WHERE id = ?`,
 		computer.IPAddress,
 		computer.Hostname,
+		computer.FullName,
 		computer.Phone,
 		computer.DepartmentName,
 		computer.PCStatus,

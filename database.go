@@ -101,7 +101,7 @@ func ensureSchema(db *sql.DB) error {
 	}
 	_, err := db.Exec(`
 		UPDATE computers
-		SET full_name = '', last_name = '', first_name = '', middle_name = '', cabinet = ''
+		SET last_name = '', first_name = '', middle_name = '', cabinet = ''
 	`)
 	if err != nil {
 		return fmt.Errorf("remove retired personal and cabinet fields: %w", err)

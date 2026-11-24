@@ -39,9 +39,35 @@ function ComputersPage() {
   const [pendingDeleteBuilding, setPendingDeleteBuilding] = useState<Building | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('ip_address')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const defaultColumns = ['ip_address', 'hostname', 'mac_address', 'phone', 'department_name', 'operating_system']
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('mchs-device-columns') || 'null') ?? defaultColumns } catch { return defaultColumns }
+  })
+  const [showColumnMenu, setShowColumnMenu] = useState(false)
+  const columnOptions = [
+    ['ip_address', 'IP-адрес'], ['hostname', 'Устройство'], ['full_name', 'ФИО'],
+    ['mac_address', 'MAC-адрес'], ['phone', 'Телефон'], ['department_name', 'Отдел'], ['operating_system', 'ОС'],
+  ]
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const columnMenuRef = useRef<HTMLDivElement>(null)
   const firstSearch = useRef(true)
   const lastSearch = useRef(search)
+
+  useEffect(() => { localStorage.setItem('mchs-device-columns', JSON.stringify(visibleColumns)) }, [visibleColumns])
+
+  useEffect(() => {
+    if (!showColumnMenu) return
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!columnMenuRef.current?.contains(event.target as Node)) setShowColumnMenu(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setShowColumnMenu(false) }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [showColumnMenu])
 
   const loadBuildings = useCallback(async () => {
     try {
@@ -305,7 +331,7 @@ function ComputersPage() {
       />
 
       <main className="workspace-main min-w-0 flex-1 overflow-auto p-5 md:p-7">
-        <section className="surface-card overflow-hidden">
+        <section className="surface-card overflow-visible">
           <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-slate-900">{currentBuilding.name}</h2>
@@ -358,9 +384,14 @@ function ComputersPage() {
                 </button>
               )}
             </div>
-            <button type="submit" className="btn btn-primary">
-              Найти
-            </button>
+            <div ref={columnMenuRef} className="relative z-30 flex shrink-0 gap-2">
+              <button type="button" className="btn btn-ghost" aria-label="Настроить столбцы таблицы" title="Столбцы таблицы" onClick={() => setShowColumnMenu((open) => !open)}><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 5h16l-6.5 7.5v5l-3 1.5v-6.5L4 5z" /></svg></button>
+              {showColumnMenu && <div className="absolute right-0 top-full z-50 mt-1 w-56 border border-slate-200 bg-white p-3 shadow-lg">
+                <p className="mb-2 text-xs font-semibold text-slate-600">Колонки таблицы</p>
+                {columnOptions.map(([key, label]) => <label key={key} className="flex cursor-pointer items-center gap-2 py-1.5 text-sm text-slate-700"><input type="checkbox" checked={visibleColumns.includes(key)} onChange={(event) => setVisibleColumns((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} />{label}</label>)}
+              </div>}
+              <button type="submit" className="btn btn-primary">Найти</button>
+            </div>
           </form>
 
           <NetworkTabs value={network} counts={counts} onChange={setNetwork} />
@@ -419,6 +450,7 @@ function ComputersPage() {
                     </div>
                     <ComputersTable
                       computers={group.items}
+                      visibleColumns={visibleColumns}
                       selectedId={selected?.id}
                       sortKey={sortKey}
                       sortDir={sortDir}
@@ -434,6 +466,7 @@ function ComputersPage() {
             <div className="surface-card overflow-hidden">
               <ComputersTable
                 computers={visibleComputers}
+                visibleColumns={visibleColumns}
                 selectedId={selected?.id}
                 sortKey={sortKey}
                 sortDir={sortDir}

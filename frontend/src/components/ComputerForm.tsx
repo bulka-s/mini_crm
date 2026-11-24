@@ -207,6 +207,9 @@ function ComputerForm({ computer, buildings, defaultBuildingId = null, defaultIP
                   onChange={(event) => updateField('hostname', event.target.value)}
                 />
               </Field>
+              <Field id="full_name" label="ФИО">
+                <input id="full_name" className="field" value={formData.full_name} onChange={(event) => updateField('full_name', event.target.value)} />
+              </Field>
               <Field id="mac_address" label="MAC-адрес">
                 <input id="mac_address" className="field font-mono" value={formData.mac_address} placeholder="AA:BB:CC:DD:EE:FF" onChange={(event) => updateField('mac_address', event.target.value)} />
               </Field>
@@ -230,7 +233,7 @@ function ComputerForm({ computer, buildings, defaultBuildingId = null, defaultIP
               </Field>
               <Field id="device_type" label="Тип устройства">
                 <select id="device_type" className="field" value={formData.device_type} onChange={(event) => updateField('device_type', event.target.value)}>
-                  <option value="computer">Компьютер</option><option value="printer">Принтер</option><option value="gateway">Шлюз</option><option value="other">Другое</option>
+                  <option value="computer">Компьютер</option><option value="printer">Принтер</option><option value="phone">Телефон</option><option value="gateway">Шлюз</option><option value="other">Другое</option>
                 </select>
               </Field>
               {formData.device_type === 'computer' && <Field id="operating_system" label="Операционная система">

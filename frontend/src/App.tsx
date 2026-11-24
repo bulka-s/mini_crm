@@ -39,6 +39,12 @@ function App() {
   const [remember, setRemember] = useState(false)
   const [authError, setAuthError] = useState('')
   const [authBusy, setAuthBusy] = useState(false)
+  const [darkTheme, setDarkTheme] = useState(() => localStorage.getItem('mchs-theme') === 'dark')
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkTheme ? 'dark' : 'light'
+    localStorage.setItem('mchs-theme', darkTheme ? 'dark' : 'light')
+  }, [darkTheme])
 
   useEffect(() => {
     function onHashChange() {
@@ -82,7 +88,7 @@ function App() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-hidden">
       <header className="flex h-12 shrink-0 items-center gap-6 border-b border-slate-200 bg-white px-5">
         <p className="text-sm font-semibold text-slate-800">MCHS CRM</p>
         <nav className="flex h-full items-stretch">
@@ -94,6 +100,7 @@ function App() {
           </NavLink>
         </nav>
         <button type="button" onClick={() => void handleLogout()} className="ml-auto text-sm text-slate-500 hover:text-slate-800">Выйти</button>
+        <button type="button" onClick={() => setDarkTheme((value) => !value)} className="text-sm text-slate-500 hover:text-slate-800" aria-label={darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'} title={darkTheme ? 'Светлая тема' : 'Тёмная тема'}>{darkTheme ? '☀' : '◐'}</button>
       </header>
       {route === 'tasks' ? <TasksPage /> : <ComputersPage />}
     </div>

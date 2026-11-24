@@ -5,6 +5,7 @@ export type BuildingFilter = 'all' | 'none' | number
 export type SortKey =
   | 'ip_address'
   | 'hostname'
+  | 'full_name'
   | 'mac_address'
   | 'phone'
   | 'department_name'
@@ -14,10 +15,11 @@ export interface Computer {
   id: number
   ip_address: string
   hostname: string
+  full_name: string
   phone: string
   mac_address: string
   department_name: string
-  device_type: 'computer' | 'printer' | string
+  device_type: 'computer' | 'printer' | 'phone' | string
   operating_system: string
   note: string
   building_id: number | null
@@ -30,10 +32,11 @@ export interface Computer {
 export type ComputerFormData = {
   ip_address: string
   hostname: string
+  full_name: string
   phone: string
   mac_address: string
   department_name: string
-  device_type: 'computer' | 'printer' | string
+  device_type: 'computer' | 'printer' | 'phone' | string
   operating_system: string
   note: string
   building_id: number | null
@@ -68,6 +71,7 @@ export interface ImportResult {
 export const emptyComputerForm: ComputerFormData = {
   ip_address: '',
   hostname: '',
+  full_name: '',
   phone: '',
   mac_address: '',
   department_name: '',
@@ -81,6 +85,7 @@ export function toFormData(computer: Computer): ComputerFormData {
   return {
     ip_address: computer.ip_address,
     hostname: computer.hostname,
+    full_name: computer.full_name || '',
     phone: computer.phone,
     mac_address: computer.mac_address || '',
     department_name: computer.department_name,

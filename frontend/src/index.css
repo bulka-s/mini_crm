@@ -122,6 +122,42 @@ button, input, select, textarea { border-radius: 0; }
 
 @media (max-width: 720px) {
   .workspace-layout { flex-direction: column; }
-  .building-sidebar { width: auto; max-height: 34vh; border-right: 0; }
+  .building-sidebar { position: relative !important; top: auto !important; width: 100%; height: auto !important; max-height: 220px; border-right: 0; border-bottom: 1px solid #e5e7eb; }
+  .building-sidebar > div:nth-child(2) { display: flex; overflow-x: auto; overflow-y: hidden; }
+  .building-sidebar > div:nth-child(2) > div { min-width: 170px; }
   .workspace-main { padding: 14px; }
+  .workspace-main > section:first-child > div:first-child { align-items: stretch; }
+  .workspace-main > section:first-child > div:first-child > div:last-child { width: 100%; }
+  .workspace-main .btn { max-width: 100%; }
 }
+
+.workspace-layout > .building-sidebar { position: sticky; top: 0; height: calc(100vh - 3rem); align-self: flex-start; }
+
+html[data-theme="dark"] body { background: #171a1f; color: #e5e7eb; }
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .surface-card,
+html[data-theme="dark"] .building-sidebar,
+html[data-theme="dark"] .bg-slate-50 { background-color: #22272e; }
+html[data-theme="dark"] .bg-slate-100,
+html[data-theme="dark"] .hover\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\:bg-slate-100:hover { background-color: #303740; }
+html[data-theme="dark"] .text-slate-900,
+html[data-theme="dark"] .text-slate-800,
+html[data-theme="dark"] .text-slate-700,
+html[data-theme="dark"] .text-slate-600 { color: #e5e7eb; }
+html[data-theme="dark"] .text-slate-500,
+html[data-theme="dark"] .text-slate-400 { color: #a0a9b5; }
+html[data-theme="dark"] .border-slate-100,
+html[data-theme="dark"] .border-slate-200,
+html[data-theme="dark"] .surface-card { border-color: #3a424d; }
+html[data-theme="dark"] .field { background: #171a1f; border-color: #48515e; color: #e5e7eb; }
+html[data-theme="dark"] tr.bg-white { background-color: #22272e; }
+html[data-theme="dark"] .hover\:bg-cyan-50\/40:hover,
+html[data-theme="dark"] .bg-cyan-50\/60 { background-color: #29343a; }
+html[data-theme="dark"] .bg-sky-50\/60,
+html[data-theme="dark"] .bg-sky-50 { background-color: #26343d; }
+html[data-theme="dark"] .text-sky-900,
+html[data-theme="dark"] .text-sky-800 { color: #b7dbe7; }
+html[data-theme="dark"] header { background-color: #22272e; }
+html[data-theme="dark"] button { color: #f8fafc; }
+html[data-theme="dark"] button svg { color: #f8fafc; }
