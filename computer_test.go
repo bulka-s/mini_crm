@@ -414,3 +414,52 @@ func TestExportImportCSV(t *testing.T) {
 		t.Fatalf("imported building = %+v", overview.Items)
 	}
 }
+
+func TestBuildingSearchAndDeviceTypeSearch(t *testing.T) {
+	server := setupTestServer(t)
+
+	postJSON(t, server.URL+"/buildings", map[string]any{
+		"name":    "Пожарная часть №1",
+		"address": "ул. Советская, 10",
+		"networks": []map[string]string{
+			{"name": "Локальная", "cidr": "10.110.5.0/24"},
+		},
+	}).Body.Close()
+	postJSON(t, server.URL+"/buildings", map[string]any{
+		"name":    "Гараж",
+		"address": "ул. Мира, 3",
+	}).Body.Close()
+
+	resp, err := http.Get(server.URL + "/buildings?search=советская")
+	if err != nil {
+		t.Fatal(err)
+	}
+	overview := decodeBody[buildingsOverview](t, resp)
+	if len(overview.Items) != 1 || overview.Items[0].Name != "Пожарная часть №1" {
+		t.Fatalf("building search by address = %+v", overview.Items)
+	}
+
+	respCIDR, err := http.Get(server.URL + "/buildings?search=10.110.5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	overviewCIDR := decodeBody[buildingsOverview](t, respCIDR)
+	if len(overviewCIDR.Items) != 1 || overviewCIDR.Items[0].Name != "Пожарная часть №1" {
+		t.Fatalf("building search by cidr = %+v", overviewCIDR.Items)
+	}
+
+	postJSON(t, server.URL+"/computers", map[string]any{
+		"ip_address":  "10.110.5.12",
+		"hostname":    "HP-400",
+		"device_type": "printer",
+	}).Body.Close()
+
+	pcResp, err := http.Get(server.URL + "/computers?search=принтер")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pcs := decodeBody[[]Computer](t, pcResp)
+	if len(pcs) != 1 || pcs[0].Hostname != "HP-400" {
+		t.Fatalf("device type search = %+v", pcs)
+	}
+}

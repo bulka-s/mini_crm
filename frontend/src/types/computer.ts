@@ -10,6 +10,7 @@ export type SortKey =
   | 'phone'
   | 'department_name'
   | 'operating_system'
+  | 'building_name'
 
 export interface Computer {
   id: number

@@ -5,9 +5,29 @@ export function displayValue(value: string | undefined | null): string {
   return trimmed === '' ? '—' : trimmed
 }
 
+export function deviceTypeLabel(deviceType: string | undefined | null): string {
+  switch (deviceType) {
+    case 'printer':
+      return 'Принтер'
+    case 'phone':
+      return 'Телефон'
+    case 'gateway':
+      return 'Шлюз'
+    case 'computer':
+    case '':
+    case undefined:
+    case null:
+      return 'Компьютер'
+    default:
+      return 'Другое'
+  }
+}
+
 export function computerLabel(computer: Computer): string {
   const host = computer.hostname.trim()
-  return host || `Устройство #${computer.id}`
+  if (host) return host
+  if (computer.ip_address.trim()) return computer.ip_address.trim()
+  return `${deviceTypeLabel(computer.device_type)} #${computer.id}`
 }
 
 export function compareIP(left: string, right: string): number {
@@ -33,8 +53,24 @@ export function sortComputers(computers: Computer[], sortKey: SortKey, sortDir: 
     const comparison =
       sortKey === 'ip_address'
         ? compareIP(left.ip_address, right.ip_address)
-        : left[sortKey].localeCompare(right[sortKey], 'ru')
+        : (left[sortKey] ?? '').localeCompare(right[sortKey] ?? '', 'ru')
     return sortDir === 'asc' ? comparison : -comparison
   })
   return next
+}
+
+export function formatDateRu(isoDate: string | undefined | null): string {
+  if (!isoDate) return ''
+  const parts = isoDate.split('-')
+  if (parts.length !== 3) return isoDate
+  return `${parts[2]}.${parts[1]}.${parts[0]}`
+}
+
+export function isOverdue(isoDate: string | undefined | null): boolean {
+  if (!isoDate) return false
+  const today = new Date()
+  const y = today.getFullYear()
+  const m = String(today.getMonth() + 1).padStart(2, '0')
+  const d = String(today.getDate()).padStart(2, '0')
+  return isoDate < `${y}-${m}-${d}`
 }

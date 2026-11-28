@@ -1,4 +1,9 @@
+export const UNAUTHORIZED_EVENT = 'mchs:unauthorized'
+
 async function readError(response: Response, fallback: string): Promise<string> {
+  if (response.status === 401) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+  }
   try {
     const payload = (await response.json()) as { error?: string }
     if (payload.error) return payload.error

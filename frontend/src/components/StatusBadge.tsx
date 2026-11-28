@@ -30,7 +30,7 @@ function StatusBadge({ status }: StatusBadgeProps) {
 
   const color = styles[value] ?? 'bg-slate-100 text-slate-700 border-slate-200'
   return (
-    <span className={`inline-flex border px-2 py-0.5 text-xs ${color}`}>
+    <span className={`inline-flex rounded border px-2 py-0.5 text-xs font-medium ${color}`}>
       {displayValue(value)}
     </span>
   )
@@ -39,7 +39,7 @@ function StatusBadge({ status }: StatusBadgeProps) {
 export function TaskStatusBadge({ status }: { status: TaskStatus }) {
   const label = TASK_STATUSES.find((item) => item.value === status)?.label ?? status
   return (
-    <span className={`inline-flex border px-2 py-0.5 text-xs ${taskStyles[status]}`}>
+    <span className={`inline-flex rounded border px-1.5 py-0.5 text-[11px] font-medium ${taskStyles[status]}`}>
       {label}
     </span>
   )

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createTask, updateTask } from '../api/tasks'
-import type { Building, Computer } from '../types/computer'
-import type { Task, TaskFormData } from '../types/task'
-import { emptyTaskForm, toTaskFormData } from '../types/task'
 import { computerLabel } from '../lib/format'
+import type { Building, Computer } from '../types/computer'
+import type { Task, TaskFormData, TaskStatus } from '../types/task'
+import { TASK_STATUSES, emptyTaskForm, toTaskFormData } from '../types/task'
+import { CloseIcon } from './Icons'
 
 interface TaskFormProps {
   task?: Task | null
@@ -67,27 +68,33 @@ function TaskForm({ task, buildings, computers, onClose, onSaved }: TaskFormProp
   }
 
   return (
-    <div className="overlay-enter fixed inset-0 z-50 bg-slate-900/30" onClick={onClose}>
+    <div className="overlay-enter fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[1px]" onClick={onClose}>
       <div
-        className="panel-enter absolute right-0 top-0 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white"
+        className="panel-enter absolute right-0 top-0 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-semibold">{task ? 'Редактировать задачу' : 'Новая задача'}</h2>
-          <button type="button" className="px-2 text-2xl text-slate-400 hover:text-slate-800" onClick={onClose}>
-            ×
+          <h2 className="text-base font-semibold text-slate-900">
+            {task ? 'Редактировать задачу' : 'Новая задача'}
+          </h2>
+          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+            <CloseIcon size={18} />
           </button>
         </div>
         <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
           <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
             {error && (
-              <p className="border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
+              <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {error}
+              </p>
             )}
             <label className="flex flex-col text-sm font-medium text-slate-700">
-              Название
+              Название *
               <input
                 required
+                autoFocus
                 className="field mt-1"
+                placeholder="Что нужно сделать?"
                 value={formData.title}
                 onChange={(event) => updateField('title', event.target.value)}
               />
@@ -97,25 +104,43 @@ function TaskForm({ task, buildings, computers, onClose, onSaved }: TaskFormProp
               <textarea
                 rows={4}
                 className="field mt-1"
+                placeholder="Подробности, кабинет, контакты…"
                 value={formData.description}
                 onChange={(event) => updateField('description', event.target.value)}
               />
             </label>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="flex flex-col text-sm font-medium text-slate-700">
+                Статус
+                <select
+                  className="field mt-1"
+                  value={formData.status}
+                  onChange={(event) => updateField('status', event.target.value as TaskStatus)}
+                >
+                  {TASK_STATUSES.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col text-sm font-medium text-slate-700">
+                Срок
+                <input
+                  type="date"
+                  className="field mt-1"
+                  value={formData.due_date}
+                  onChange={(event) => updateField('due_date', event.target.value)}
+                />
+              </label>
+            </div>
             <label className="flex flex-col text-sm font-medium text-slate-700">
               Исполнитель
               <input
                 className="field mt-1"
+                placeholder="Иванов И.И."
                 value={formData.assignee}
                 onChange={(event) => updateField('assignee', event.target.value)}
-              />
-            </label>
-            <label className="flex flex-col text-sm font-medium text-slate-700">
-              Срок
-              <input
-                type="date"
-                className="field mt-1"
-                value={formData.due_date}
-                onChange={(event) => updateField('due_date', event.target.value)}
               />
             </label>
             <label className="flex flex-col text-sm font-medium text-slate-700">
@@ -136,7 +161,7 @@ function TaskForm({ task, buildings, computers, onClose, onSaved }: TaskFormProp
               </select>
             </label>
             <label className="flex flex-col text-sm font-medium text-slate-700">
-              Компьютер
+              Устройство
               <select
                 className="field mt-1"
                 value={formData.computer_id ?? ''}
@@ -144,18 +169,22 @@ function TaskForm({ task, buildings, computers, onClose, onSaved }: TaskFormProp
                   updateField('computer_id', event.target.value ? Number(event.target.value) : null)
                 }
               >
-                <option value="">Не указан</option>
+                <option value="">Не указано</option>
                 {availableComputers.map((computer) => (
                   <option key={computer.id} value={computer.id}>
                     {computerLabel(computer)}
+                    {computer.ip_address ? ` (${computer.ip_address})` : ''}
                   </option>
                 ))}
               </select>
             </label>
           </div>
-          <div className="border-t border-slate-200 p-4">
-            <button type="submit" disabled={saving} className="btn btn-primary w-full">
-              {saving ? 'Сохранение...' : 'Сохранить'}
+          <div className="flex gap-2 border-t border-slate-200 p-4">
+            <button type="button" className="btn btn-ghost flex-1" onClick={onClose}>
+              Отмена
+            </button>
+            <button type="submit" disabled={saving} className="btn btn-primary flex-1">
+              {saving ? 'Сохранение…' : 'Сохранить'}
             </button>
           </div>
         </form>

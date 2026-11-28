@@ -194,6 +194,21 @@ func getComputerByID(db *sql.DB, id int) (Computer, error) {
 	return computer, nil
 }
 
+func deviceTypeLabel(deviceType string) string {
+	switch deviceType {
+	case "printer":
+		return "Принтер"
+	case "phone":
+		return "Телефон"
+	case "gateway":
+		return "Шлюз"
+	case "computer", "":
+		return "Компьютер"
+	default:
+		return "Другое"
+	}
+}
+
 func computerMatches(computer Computer, search string) bool {
 	needle := strings.ToLower(strings.TrimSpace(search))
 	if needle == "" {
@@ -209,6 +224,7 @@ func computerMatches(computer Computer, search string) bool {
 		computer.Phone,
 		computer.DepartmentName,
 		computer.DeviceType,
+		deviceTypeLabel(computer.DeviceType),
 		computer.OperatingSystem,
 		computer.PCStatus,
 		computer.Note,

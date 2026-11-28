@@ -68,25 +68,16 @@ func getBuildingNetworks(db *sql.DB, buildingID int) ([]BuildingNetwork, error) 
 	return items, rows.Err()
 }
 
-func saveBuildingNetworks(db *sql.DB, buildingID int, networks []BuildingNetwork) error {
-	if err := validBuildingNetworks(networks); err != nil {
-		return err
-	}
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	if _, err = tx.Exec(`DELETE FROM building_networks WHERE building_id = ?`, buildingID); err != nil {
-		_ = tx.Rollback()
+func saveBuildingNetworksTx(tx *sql.Tx, buildingID int, networks []BuildingNetwork) error {
+	if _, err := tx.Exec(`DELETE FROM building_networks WHERE building_id = ?`, buildingID); err != nil {
 		return err
 	}
 	for _, n := range networks {
-		if _, err = tx.Exec(`INSERT INTO building_networks (building_id, name, cidr) VALUES (?, ?, ?)`, buildingID, n.Name, n.CIDR); err != nil {
-			_ = tx.Rollback()
+		if _, err := tx.Exec(`INSERT INTO building_networks (building_id, name, cidr) VALUES (?, ?, ?)`, buildingID, n.Name, n.CIDR); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 type buildingsOverview struct {
@@ -192,19 +183,29 @@ func insertBuilding(db *sql.DB, building Building) (Building, error) {
 		return Building{}, err
 	}
 
-	result, err := db.Exec(
+	tx, err := db.Begin()
+	if err != nil {
+		return Building{}, err
+	}
+	result, err := tx.Exec(
 		`INSERT INTO buildings (name, address) VALUES (?, ?)`,
 		building.Name,
 		building.Address,
 	)
 	if err != nil {
+		_ = tx.Rollback()
 		return Building{}, err
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
+		_ = tx.Rollback()
 		return Building{}, err
 	}
-	if err := saveBuildingNetworks(db, int(id), building.Networks); err != nil {
+	if err := saveBuildingNetworksTx(tx, int(id), building.Networks); err != nil {
+		_ = tx.Rollback()
+		return Building{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return Building{}, err
 	}
 	return getBuildingByID(db, int(id))
@@ -216,23 +217,34 @@ func updateBuilding(db *sql.DB, id int, building Building) (Building, error) {
 		return Building{}, err
 	}
 
-	result, err := db.Exec(
+	tx, err := db.Begin()
+	if err != nil {
+		return Building{}, err
+	}
+	result, err := tx.Exec(
 		`UPDATE buildings SET name = ?, address = ? WHERE id = ?`,
 		building.Name,
 		building.Address,
 		id,
 	)
 	if err != nil {
+		_ = tx.Rollback()
 		return Building{}, err
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
+		_ = tx.Rollback()
 		return Building{}, err
 	}
 	if affected == 0 {
+		_ = tx.Rollback()
 		return Building{}, sql.ErrNoRows
 	}
-	if err := saveBuildingNetworks(db, id, building.Networks); err != nil {
+	if err := saveBuildingNetworksTx(tx, id, building.Networks); err != nil {
+		_ = tx.Rollback()
+		return Building{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return Building{}, err
 	}
 	return getBuildingByID(db, id)
@@ -285,11 +297,36 @@ func findOrCreateBuilding(db *sql.DB, name, address string) (*int, error) {
 	return &created.ID, nil
 }
 
+func buildingMatches(b Building, search string) bool {
+	needle := strings.ToLower(strings.TrimSpace(search))
+	if needle == "" {
+		return true
+	}
+	if strings.Contains(strings.ToLower(b.Name), needle) || strings.Contains(strings.ToLower(b.Address), needle) {
+		return true
+	}
+	for _, n := range b.Networks {
+		if strings.Contains(strings.ToLower(n.Name), needle) || strings.Contains(strings.ToLower(n.CIDR), needle) {
+			return true
+		}
+	}
+	return false
+}
+
 func listBuildingsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		overview, err := listBuildings(db)
 		if handleDBError(w, err, "Здание не найдено") {
 			return
+		}
+		if search := strings.TrimSpace(r.URL.Query().Get("search")); search != "" {
+			filtered := make([]Building, 0, len(overview.Items))
+			for _, item := range overview.Items {
+				if buildingMatches(item, search) {
+					filtered = append(filtered, item)
+				}
+			}
+			overview.Items = filtered
 		}
 		writeJSON(w, http.StatusOK, overview)
 	}
